@@ -78,7 +78,10 @@ resource "aws_cloudfront_function" "validator" {
   runtime = "cloudfront-js-2.0"
   comment = "CTA-5007-B CWT validator. VID-3439."
   publish = true
-  code    = file("${path.module}/../source/lambda/cta_token_validator.js")
+  code = templatefile("${path.module}/../source/lambda/cta_token_validator.js.tftpl", {
+    token_validation_enabled = var.token_validation_enabled ? "true" : "false"
+    geo_validation_enabled   = var.geo_validation_enabled ? "true" : "false"
+  })
 
   key_value_store_associations = [aws_cloudfront_key_value_store.this.arn]
 }

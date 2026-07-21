@@ -3,13 +3,19 @@
  * Supports path→header token transition for streaming players
  *
  * Requires CloudFront Functions JavaScript runtime 2.0
+ *
+ * Feature flags are baked at deploy time via Terraform templatefile.
+ * See var.token_validation_enabled and var.geo_validation_enabled.
  */
 
 import cf from 'cloudfront';
 
+var TOKEN_VALIDATION_ENABLED = ${token_validation_enabled};
+var GEO_VALIDATION_ENABLED = ${geo_validation_enabled};
+
 var CTA = {
     EXP: "4",           // Expiration
-    NBF: "5",           // Not Before  
+    NBF: "5",           // Not Before
     IAT: "6",           // Issued At
     CTI: "7",           // Token ID
     CATNIP: "402",      // Network IP (per CloudFront docs)
@@ -40,30 +46,32 @@ function extractPathToken(request) {
 
 function validateClaims(payload, request, viewerIp) {
     var now = Math.floor(Date.now() / 1000);
-    
+
     if (payload[CTA.EXP] && now > payload[CTA.EXP]) {
         throw new Error("expired");
     }
-    
+
     if (payload[CTA.NBF] && now < payload[CTA.NBF]) {
         throw new Error("not_yet_valid");
     }
-    
+
     // URI path validation (catu → path → prefix_match)
     if (payload[CTA.CATU] && payload[CTA.CATU][Catu.PATH] && payload[CTA.CATU][Catu.PATH][CatuMatch.PREFIX]) {
         if (!request.uri.startsWith(payload[CTA.CATU][Catu.PATH][CatuMatch.PREFIX])) {
             throw new Error("uri_not_allowed");
         }
     }
-    
-    // Country validation (catgeoiso3166)
-    if (payload[CTA.CATGEOISO3166]) {
+
+    // Country validation (catgeoiso3166). Gated by GEO_VALIDATION_ENABLED —
+    // when off, the claim is present but not enforced. Future zip/DMA edge
+    // checks (VID-3450) will live under the same flag.
+    if (GEO_VALIDATION_ENABLED && payload[CTA.CATGEOISO3166]) {
         var country = request.headers["cloudfront-viewer-country"];
         if (!country || payload[CTA.CATGEOISO3166].indexOf(country.value.toLowerCase()) === -1) {
             throw new Error("geo_restricted");
         }
     }
-    
+
     // IP validation (catnip — claim 402)
     // event.viewer.ip is available in CloudFront Functions JS 2.0
     if (payload[CTA.CATNIP] && viewerIp) {
@@ -84,7 +92,7 @@ function validateClaims(payload, request, viewerIp) {
 async function handler(event) {
     try {
         var request = event.request;
-        
+
         // Handle CORS preflight
         if (request.method === 'OPTIONS') {
             return {
@@ -97,15 +105,23 @@ async function handler(event) {
                 }
             };
         }
-        
+
+        // Break-glass bypass. When token validation is disabled at deploy
+        // time, forward every viewer request unmodified — the edge becomes
+        // a no-op and origin serves anonymously. Use only for staged
+        // rollout or incident response.
+        if (!TOKEN_VALIDATION_ENABLED) {
+            return request;
+        }
+
         // /website/* and /api/* are handled by separate behaviors
         // Default behavior only gets token-protected content requests
-        
+
         var kvs = cf.kvs();
         var signingKey = await kvs.get("key:default");
         var token = null;
         var payload = null;
-        
+
         // Try header token first
         if (request.headers["cta-common-access-token"]) {
             token = request.headers["cta-common-access-token"].value;
@@ -125,16 +141,16 @@ async function handler(event) {
             if (!token) {
                 return { statusCode: 401, body: "missing_token" };
             }
-            
+
             var cwt = cf.cwt.validateToken(Buffer.from(token, 'base64url'), { key: signingKey });
             payload = cwt.payload;
-            
+
             // Strip token from path before sending to origin
             var segments = request.uri.split('/');
             segments.splice(1, 1);
             request.uri = segments.join('/') || '/';
         }
-        
+
         // Check revocation
         if (payload[CTA.CTI]) {
             try {
@@ -147,13 +163,13 @@ async function handler(event) {
                 // Key not found in KVS means not revoked — continue
             }
         }
-        
+
         // Validate claims
         validateClaims(payload, request, event.viewer.ip);
-        
+
         // Forward request to origin
         return request;
-        
+
     } catch (e) {
         return { statusCode: 401, body: e.message };
     }

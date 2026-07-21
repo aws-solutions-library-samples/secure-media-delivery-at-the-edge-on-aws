@@ -53,6 +53,20 @@ variable "demo_origin_domain" {
 # anyone can mint). Set to the drm-api-lambda execution role ARN in envs
 # that participate in the CTA-5007-B rollout; the REST API resource policy
 # then restricts invoke to that role alone.
+variable "token_validation_enabled" {
+  type        = bool
+  description = "Master switch for CTA token validation at the edge. When false, the validator forwards every viewer request without inspecting the token — break-glass bypass for staged rollout or incident response. Baked into the CloudFront Function at deploy time; flipping requires a Terraform apply."
+  default     = true
+  nullable    = false
+}
+
+variable "geo_validation_enabled" {
+  type        = bool
+  description = "Enforce geo restrictions at the edge. When false, the catgeoiso3166 country claim is not checked (future zip/DMA edge checks per VID-3450 will live under the same flag). Other claim checks (URI/IP/exp/nbf/revocation) still run."
+  default     = true
+  nullable    = false
+}
+
 variable "drm_api_lambda_role_arn" {
   type        = string
   description = "ARN of the drm-api-lambda execution role. When non-empty, flips POST /api/token to AWS_IAM authorization and installs a resource policy allowing invoke only from this role."
