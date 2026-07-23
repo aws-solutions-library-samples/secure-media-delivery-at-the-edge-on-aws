@@ -47,7 +47,7 @@
   },
   "dependencies": {
     "@aws-cdk/aws-servicecatalogappregistry-alpha": "^2.150.0-alpha.0",
-    "aws-cdk-lib": "^2.150.0",
+    "aws-cdk-lib": "^2.262.0",
     "constructs": "^10.3.0",
     "joi": "^17.6.0",
     "prompts": "^2.4.2",
