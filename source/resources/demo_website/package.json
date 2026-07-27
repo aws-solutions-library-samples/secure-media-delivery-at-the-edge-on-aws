@@ -20,7 +20,7 @@
     "style-loader": "^4.0.0",
     "webpack": "^5.96.1",
     "webpack-cli": "^5.1.4",
-    "webpack-dev-server": "^5.1.0"
+    "webpack-dev-server": "^5.2.6"
   },
   "dependencies": {
     "bootstrap": "^5.3.3",
