@@ -5,3 +5,4 @@ cta-session.json
 source/dist/
 source/cdk.out/
 source/solution.context.json
+.playwright-mcp/
