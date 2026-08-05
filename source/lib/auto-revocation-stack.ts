@@ -106,6 +106,23 @@ export class AutoRevocationStack extends Stack {
         allowMethods: apigateway.Cors.ALL_METHODS,
       },
     });
+
+    // Attach CORS headers to default gateway responses so integration errors
+    // (Lambda 5xx/timeout, or a 4xx) still carry Access-Control-Allow-Origin
+    // instead of surfacing in the browser as a misleading CORS error.
+    const corsResponseHeaders = {
+      "Access-Control-Allow-Origin": "'*'",
+      "Access-Control-Allow-Headers": "'*'",
+    };
+    promptApi.addGatewayResponse("Default4XX", {
+      type: apigateway.ResponseType.DEFAULT_4XX,
+      responseHeaders: corsResponseHeaders,
+    });
+    promptApi.addGatewayResponse("Default5XX", {
+      type: apigateway.ResponseType.DEFAULT_5XX,
+      responseHeaders: corsResponseHeaders,
+    });
+
     const promptResource = promptApi.root.addResource("prompt");
     promptResource.addMethod("GET", new apigateway.LambdaIntegration(promptManager));
     promptResource.addMethod("PUT", new apigateway.LambdaIntegration(promptManager));

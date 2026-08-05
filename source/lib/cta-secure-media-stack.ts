@@ -205,6 +205,24 @@ export class CTASecureMediaStack extends Stack {
       },
     });
 
+    // Attach CORS headers to API Gateway's default gateway responses so that
+    // integration errors (e.g. a Lambda 5xx/timeout, or a 4xx) still carry
+    // Access-Control-Allow-Origin. Without this, an errored request returns a
+    // response with no CORS header, which browsers surface as a misleading
+    // "blocked by CORS policy" error that masks the real status code.
+    const corsResponseHeaders = {
+      "Access-Control-Allow-Origin": "'*'",
+      "Access-Control-Allow-Headers": "'*'",
+    };
+    api.addGatewayResponse("Default4XX", {
+      type: apigateway.ResponseType.DEFAULT_4XX,
+      responseHeaders: corsResponseHeaders,
+    });
+    api.addGatewayResponse("Default5XX", {
+      type: apigateway.ResponseType.DEFAULT_5XX,
+      responseHeaders: corsResponseHeaders,
+    });
+
     const tokenResource = api.root.addResource("token");
     tokenResource.addMethod("POST", new apigateway.LambdaIntegration(generator));
 
