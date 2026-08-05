@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "aws-cdk-lib": "2.170.0",
+    "cbor-x": "^1.6.5",
     "constructs": "^10.3.0",
     "prompts": "^2.4.2"
   },
@@ -27,6 +28,7 @@
     "@types/node": "^22.0.0",
     "@types/prompts": "^2.0.14",
     "aws-cdk": "2.170.0",
+    "esbuild": "^0.24.2",
     "typescript": "^5.0.4"
   }
 }

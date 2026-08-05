@@ -23,6 +23,7 @@ import {
 } from "aws-cdk-lib";
 
 import { HttpOrigin, RestApiOrigin, S3BucketOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Construct } from "constructs";
 
 export interface CTASecureMediaStackProps extends StackProps {
@@ -85,10 +86,17 @@ export class CTASecureMediaStack extends Stack {
     });
 
     // Token generator (Node SDK)
-    const generator = new lambda.Function(this, "CTAGenerator", {
+    // NodejsFunction (esbuild) bundles the handler together with its
+    // third-party dependency cbor-x, which is NOT provided by the Lambda
+    // Node.js runtime. A plain Code.fromAsset("lambda") ships no node_modules,
+    // so require('cbor-x') fails at module init and API Gateway returns a 502
+    // with no CORS headers — surfacing in the browser as a CORS error.
+    // The AWS SDK v3 packages (@aws-sdk/*) remain externalized by default
+    // since they ARE present in the runtime.
+    const generator = new NodejsFunction(this, "CTAGenerator", {
       runtime: lambda.Runtime.NODEJS_22_X,
-      handler: "cta_token_generator.handler",
-      code: lambda.Code.fromAsset("lambda"),
+      entry: "lambda/cta_token_generator.js",
+      handler: "handler",
       timeout: Duration.seconds(10),
       environment: { SECRET_NAME: signingSecret.secretName },
     });
