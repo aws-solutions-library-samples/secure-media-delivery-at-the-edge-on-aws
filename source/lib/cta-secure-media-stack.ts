@@ -19,6 +19,7 @@ import {
   aws_events as events,
   aws_events_targets as targets,
   aws_kinesis as kinesis,
+  aws_wafv2 as wafv2,
   custom_resources,
 } from "aws-cdk-lib";
 
@@ -246,10 +247,66 @@ export class CTASecureMediaStack extends Stack {
     const revokeResource = api.root.addResource("revoke");
     revokeResource.addMethod("POST", new apigateway.LambdaIntegration(revoker));
 
+    // WAFv2 Web ACL — rate-limit POST /api/token per source IP.
+    //: automated-scraping mitigation. Rate-based rules use a
+    // rolling 5-minute window; 300 req/5min ≈ 60 req/min per IP, well
+    // above legitimate player traffic (mint once → 2h TTL → next mint)
+    // but tight enough to stop a mint-your-own-token scraper.
+    // Blocked requests get a custom 429 response instead of the default 403.
+    const rateLimitBody = "CTAWebAclRateLimit429";
+    const webAcl = new wafv2.CfnWebACL(this, "CTAWebAcl", {
+      name: `${Aws.STACK_NAME}-token-rate-limit`,
+      description: "Rate-limit POST /api/token to mitigate automated CWT minting",
+      scope: "CLOUDFRONT",
+      defaultAction: { allow: {} },
+      visibilityConfig: {
+        cloudWatchMetricsEnabled: true,
+        metricName: `${Aws.STACK_NAME}-web-acl`,
+        sampledRequestsEnabled: true,
+      },
+      customResponseBodies: {
+        [rateLimitBody]: {
+          contentType: "APPLICATION_JSON",
+          content: JSON.stringify({ error: "rate_limited", message: "Too many token mint requests from this IP; try again in a few minutes." }),
+        },
+      },
+      rules: [{
+        name: "TokenMintRateLimit",
+        priority: 0,
+        action: {
+          block: {
+            customResponse: {
+              responseCode: 429,
+              customResponseBodyKey: rateLimitBody,
+            },
+          },
+        },
+        statement: {
+          rateBasedStatement: {
+            limit: 300,
+            aggregateKeyType: "IP",
+            scopeDownStatement: {
+              byteMatchStatement: {
+                fieldToMatch: { uriPath: {} },
+                positionalConstraint: "STARTS_WITH",
+                searchString: "/api/token",
+                textTransformations: [{ priority: 0, type: "NONE" }],
+              },
+            },
+          },
+        },
+        visibilityConfig: {
+          cloudWatchMetricsEnabled: true,
+          metricName: `${Aws.STACK_NAME}-token-rate-limit`,
+          sampledRequestsEnabled: true,
+        },
+      }],
+    });
+
     // Demo website (conditional)
     let distribution: cloudfront.Distribution;
     let demoBucket: s3.Bucket | undefined;
-    
+
     if (config.main.enableDemo) {
       demoBucket = new s3.Bucket(this, "DemoWebsite", {
         removalPolicy: RemovalPolicy.DESTROY,
@@ -264,6 +321,7 @@ export class CTASecureMediaStack extends Stack {
       });
 
       distribution = new cloudfront.Distribution(this, "CTADistribution", {
+        webAclId: webAcl.attrArn,
         defaultBehavior: {
           origin: new HttpOrigin("cdn.mediaplaypen.com"),
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -294,6 +352,7 @@ export class CTASecureMediaStack extends Stack {
 
     } else {
       distribution = new cloudfront.Distribution(this, "CTADistribution", {
+        webAclId: webAcl.attrArn,
         defaultBehavior: {
           origin: new RestApiOrigin(api),
           functionAssociations: [{
@@ -425,6 +484,11 @@ export class CTASecureMediaStack extends Stack {
     new CfnOutput(this, "RotationWorkflow", {
       value: rotationWorkflow.stateMachineName,
       description: "Key rotation Step Functions workflow"
+    });
+
+    new CfnOutput(this, "WebAclArn", {
+      value: webAcl.attrArn,
+      description: "WAFv2 Web ACL — rate-limits POST /api/token"
     });
   }
 
