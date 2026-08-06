@@ -77,13 +77,24 @@ export class CTASecureMediaStack extends Stack {
       comment: "CTA token revocation list",
     });
 
-    // CTA validator function
+    // CTA validator function.
+    //
+    // Explicit addDependency on the KVS: CloudFront KeyValueStore is a
+    // two-phase AWS resource (Provisioning -> Ready). The L2 construct
+    // returns the ARN before the store is Ready, so without this
+    // dependency CDK can order the CF Function's KeyValueStoreAssociations
+    // before the KVS is Ready and CloudFormation fails with:
+    //   "cannot be associated before the resource is provisioned"
+    // The failure is intermittent — it depends on CDK's graph traversal
+    // order — which makes it especially frustrating to debug on a fresh
+    // deploy.
     const validator = new cloudfront.Function(this, "CTAValidator", {
       code: cloudfront.FunctionCode.fromFile({ filePath: "lambda/cta_token_validator.js" }),
       functionName: `${Aws.STACK_NAME}-CTA-Validator`,
       runtime: cloudfront.FunctionRuntime.JS_2_0,
       keyValueStore: this.kvStore,
     });
+    validator.node.addDependency(this.kvStore);
 
     // Token generator (Node SDK)
     // NodejsFunction (esbuild) bundles the handler together with its
