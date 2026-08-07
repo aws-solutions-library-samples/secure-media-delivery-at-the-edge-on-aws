@@ -254,3 +254,9 @@ A scheduled Lambda runs hourly to purge expired revocation entries from KeyValue
 - Node.js 22+
 - AWS CDK v2.79.1+
 - AWS account with CloudFront Functions CWT support
+
+## Community ports
+
+If you'd rather deploy this stack with Terraform than CDK, a community-maintained port is available:
+
+- **Terraform**: [playon/terraform-aws-cta-secure-media](https://github.com/playon/terraform-aws-cta-secure-media) — feature-parity port as a reusable Terraform module. Vendors the Lambda runtime code from this repo unchanged; exposes the validator function ARN, KVS ARN, and API endpoint as module outputs so consumers can attach the validator to their own distribution.
