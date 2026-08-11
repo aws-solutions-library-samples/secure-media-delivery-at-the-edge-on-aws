@@ -386,6 +386,47 @@ After deployment, the stacks export the following outputs:
 |--------|-------------|
 | `PromptAPIEndpoint` | API endpoint for reading/editing the Bedrock analysis prompt |
 
+## Cost Estimate
+
+The solution uses serverless/pay-per-use services. Costs scale with viewer count and session duration. Below is a breakdown of per-service usage at steady-state streaming.
+
+### Per-Viewer Cost Drivers (1,000 concurrent viewers, 2-hour sessions, HLS)
+
+A typical HLS viewer generates ~720 segment requests/hour (2s segments) plus periodic manifest fetches. With 2-hour token TTL, each viewer mints one token at start and one renewal.
+
+| Service | Usage per viewer/session | At 1,000 viewers | Pricing page |
+|---------|------------------------|------------------|--------------|
+| **CloudFront requests** | ~1,500 GET requests (segments + manifests) | 1.5M requests | [CloudFront pricing](https://aws.amazon.com/cloudfront/pricing/) |
+| **CloudFront Function** | 1 invocation per request (validator) | 1.5M invocations | Included in CF pricing |
+| **KVS reads** | 2 per request (signing key + revocation check) | 3M reads | [KVS pricing](https://aws.amazon.com/cloudfront/pricing/) |
+| **API Gateway** | 2 requests (initial token + 1 renewal) | 2,000 requests | [API Gateway pricing](https://aws.amazon.com/api-gateway/pricing/) |
+| **Lambda (token gen)** | 2 invocations × ~100ms | 2,000 invocations | [Lambda pricing](https://aws.amazon.com/lambda/pricing/) |
+| **Secrets Manager** | 0 (key cached in Lambda) | Negligible | [Secrets Manager pricing](https://aws.amazon.com/secrets-manager/pricing/) |
+| **Kinesis (real-time logs)** | 1 record per CF request | 1.5M PUT records | [Kinesis pricing](https://aws.amazon.com/kinesis/data-streams/pricing/) |
+| **S3 (demo site)** | Static hosting only | Minimal | [S3 pricing](https://aws.amazon.com/s3/pricing/) |
+
+### Fixed / Scheduled Costs
+
+| Service | Frequency | Notes |
+|---------|-----------|-------|
+| **WAFv2 Web ACL** | Always-on | $5/month + $1/rule + $0.60/M requests evaluated |
+| **Step Functions (key rotation)** | Monthly (default) | ~5 state transitions per rotation |
+| **Lambda (KVS cleanup)** | Hourly | Single invocation, <1s duration |
+| **Secrets Manager** | 1 secret | $0.40/month |
+| **Bedrock (auto-revocation)** | Per Kinesis batch (if enabled) | Input/output tokens at Nova Lite rates |
+
+### Cost Optimization Tips
+
+- **CloudFront Functions** are significantly cheaper than Lambda@Edge ($0.10/M vs $0.60/M) — this architecture avoids L@E entirely
+- **KVS reads** at the edge are included in CloudFront pricing at $0.05 per 10M reads
+- **Token TTL** is the primary cost lever — longer TTLs mean fewer renewal API calls. A 2-hour TTL means ~1 API call per viewer per 2 hours; a 24-hour TTL reduces it to near-zero
+- **Kinesis** can be disabled if real-time log analysis isn't needed (remove the real-time log config from the distribution)
+- **Bedrock** is only invoked if the auto-revocation stack is deployed AND the Kinesis consumer detects suspicious patterns — most batches skip Bedrock entirely
+
+### Pricing Calculator
+
+Use the [AWS Pricing Calculator](https://calculator.aws/) to estimate costs for your specific viewer count and session patterns.
+
 ## Requirements
 
 - Node.js 22+
