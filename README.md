@@ -210,7 +210,14 @@ The revocation propagates to CloudFront edge locations via KeyValueStore within 
 | `/api/*` | API Gateway | REST API | None (CORS enabled) |
 | `/*` (default) | Video content | HTTP origin | CTA Validator Function |
 
-The demo website is at `/website/index.html` and the revocation dashboard is at `/website/dashboard.html`.
+### Demo Pages
+
+| Page | Token Delivery Mode |
+|------|---------------------|
+| `/website/index-path.html` | Path token — CMS-friendly signed URLs |
+| `/website/index-header.html` | Header-only — `CTA-Common-Access-Token` header |
+| `/website/index-hybrid.html` | Hybrid — path init, header renewal |
+| `/website/dashboard.html` | Revocation dashboard + Bedrock prompt editor |
 
 ## Key Rotation
 
@@ -248,6 +255,31 @@ A scheduled Lambda runs hourly to purge expired revocation entries from KeyValue
 |-------|-------------|
 | `CTASecureMedia` | Main stack: CloudFront, KVS, API Gateway, Lambdas, Secrets Manager, Kinesis, Step Functions |
 | `CTAAutoRevocation` | Optional: Bedrock-powered Kinesis consumer, SSM prompt parameter, Prompt API |
+
+## CDK Stack Outputs
+
+After deployment, the stacks export the following outputs:
+
+### CTASecureMedia (main stack)
+
+| Output | Description |
+|--------|-------------|
+| `APIEndpoint` | CTA API endpoint (via CloudFront) — `https://<dist>/api` |
+| `DemoWebsiteUrl` | Demo page — Path token mode |
+| `DemoWebsiteHeaderUrl` | Demo page — Header-only token mode |
+| `DemoWebsiteHybridUrl` | Demo page — Hybrid (path init → header renewal) |
+| `DashboardUrl` | Standalone revocation dashboard with Bedrock prompt editor |
+| `KeyValueStoreId` | CloudFront KeyValueStore ID (revocation + signing keys) |
+| `SecretArn` | Secrets Manager ARN for the HMAC signing key |
+| `RotationWorkflow` | Step Functions workflow name for key rotation |
+| `WebAclArn` | WAFv2 Web ACL ARN (rate-limits token minting) |
+| `CTAStandard` | Implemented specification version (`CTA-5007-B`) |
+
+### CTASecureMediaAutoRevocation (optional stack)
+
+| Output | Description |
+|--------|-------------|
+| `PromptAPIEndpoint` | API endpoint for reading/editing the Bedrock analysis prompt |
 
 ## Requirements
 

@@ -484,6 +484,10 @@ export class CTASecureMediaStack extends Stack {
         value: `https://${distribution.distributionDomainName}/website/index-hybrid.html`,
         description: "CTA Demo Website — Hybrid (Path Init → Header Renewal)"
       });
+      new CfnOutput(this, "DashboardUrl", { 
+        value: `https://${distribution.distributionDomainName}/website/dashboard.html`,
+        description: "Revocation Dashboard with Bedrock Prompt Editor"
+      });
     }
     
     new CfnOutput(this, "KeyValueStoreId", { 
