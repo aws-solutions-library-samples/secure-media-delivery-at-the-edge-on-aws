@@ -330,6 +330,17 @@ export class CTASecureMediaStack extends Stack {
               "CloudFront-Viewer-Country"
             ),
           }),
+          responseHeadersPolicy: new cloudfront.ResponseHeadersPolicy(this, "CTACorsResponsePolicy", {
+            responseHeadersPolicyName: `${Aws.STACK_NAME}-CTA-CORS`,
+            corsBehavior: {
+              accessControlAllowOrigins: ["*"],
+              accessControlAllowHeaders: ["CTA-Common-Access-Token", "Content-Type"],
+              accessControlAllowMethods: ["GET", "HEAD", "OPTIONS"],
+              accessControlExposeHeaders: ["CTA-Common-Access-Token"],
+              accessControlMaxAge: Duration.hours(24),
+              originOverride: true,
+            },
+          }),
           originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
           functionAssociations: [{
             function: validator,
