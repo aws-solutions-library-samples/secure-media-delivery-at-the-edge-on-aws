@@ -115,7 +115,7 @@
         &nbsp;·&nbsp;
         <a href="index-hybrid.html" style="color:#161b26;font-weight:600;text-decoration:underline">Hybrid Mode</a>
         &nbsp;·&nbsp;
-        <a href="dashboard.html" style="color:#161b26;font-weight:600;text-decoration:underline">Revocation Dashboard</a>
+                <a href="#dashboardSection" style="color:#161b26;font-weight:600;text-decoration:underline">Revocation Dashboard</a>
     </p>
 </div>
 
@@ -176,7 +176,7 @@
                 </div>
                 <button class="btn btn-primary" onclick="generateAndPlay()">Generate Token &amp; Play</button>
                 <button class="btn btn-secondary" id="revokeBtn" onclick="revokeToken()" disabled>Revoke Token</button>
-                <a href="dashboard.html" class="btn btn-secondary" style="text-decoration:none;display:inline-block">Revocation Dashboard</a>
+                <button class="btn btn-secondary" onclick="document.getElementById('dashboardSection').scrollIntoView({behavior:'smooth'})">Revocation Dashboard ↓</button>
             </div>
 
             <div class="token-box" id="tokenBox" style="display:none">
@@ -267,6 +267,42 @@
             <text x="286" y="92" text-anchor="middle" font-size="8" fill="#6b7280">playback continues seamlessly</text>
         </svg>
     </div>
+</div>
+
+<!-- Embedded Revocation Dashboard -->
+<div class="section" id="dashboardSection">
+    <h2>🛡️ Revocation Dashboard</h2>
+    <p class="desc">Real-time session revocation status — auto-refreshes every 15 seconds.</p>
+    <div style="display:flex;gap:24px;margin:24px 0">
+        <div style="background:#f8f8fa;border:1px solid #e9ebed;border-radius:8px;padding:20px;flex:1">
+            <div style="font-size:32px;font-weight:700" id="dashTotal">—</div>
+            <div style="font-size:13px;color:#6b7280;margin-top:4px">Total Revoked</div>
+        </div>
+        <div style="background:#f8f8fa;border:1px solid #e9ebed;border-radius:8px;padding:20px;flex:1">
+            <div style="font-size:32px;font-weight:700" id="dashAuto">—</div>
+            <div style="font-size:13px;color:#6b7280;margin-top:4px">Auto-Revoked (Bedrock)</div>
+        </div>
+        <div style="background:#f8f8fa;border:1px solid #e9ebed;border-radius:8px;padding:20px;flex:1">
+            <div style="font-size:32px;font-weight:700" id="dashManual">—</div>
+            <div style="font-size:13px;color:#6b7280;margin-top:4px">Manually Revoked</div>
+        </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h3 style="font-size:18px;font-weight:700">Revoked Sessions</h3>
+        <button onclick="loadDashboard()" style="padding:8px 16px;border:1px solid #d1d5db;border-radius:4px;background:#fff;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600">↻ Refresh</button>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:14px">
+        <thead>
+            <tr>
+                <th style="text-align:left;padding:10px 12px;background:#f3f3f7;font-weight:600;border-bottom:2px solid #e9ebed">Session ID</th>
+                <th style="text-align:left;padding:10px 12px;background:#f3f3f7;font-weight:600;border-bottom:2px solid #e9ebed">Reason</th>
+                <th style="text-align:left;padding:10px 12px;background:#f3f3f7;font-weight:600;border-bottom:2px solid #e9ebed">Revoked At</th>
+            </tr>
+        </thead>
+        <tbody id="dashTable">
+            <tr><td colspan="3" style="text-align:center;padding:40px;color:#6b7280">Loading...</td></tr>
+        </tbody>
+    </table>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -564,6 +600,32 @@ fetch('https://api64.ipify.org').then(r => r.text()).then(ip => {
 }).catch(() => {
     document.getElementById('ipHint').textContent = '';
 });
+
+// Embedded dashboard
+async function loadDashboard() {
+    try {
+        const resp = await fetch(API_ENDPOINT + '/revoked');
+        const data = await resp.json();
+        const revoked = data.revoked || [];
+        document.getElementById('dashTotal').textContent = revoked.length;
+        document.getElementById('dashAuto').textContent = revoked.filter(r => r.reason && r.reason.startsWith('auto')).length;
+        document.getElementById('dashManual').textContent = revoked.filter(r => r.reason === 'manual').length;
+        const tbody = document.getElementById('dashTable');
+        if (revoked.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:40px;color:#6b7280">No revoked sessions</td></tr>';
+            return;
+        }
+        tbody.innerHTML = revoked.map(r => `<tr>
+            <td style="padding:10px 12px;border-bottom:1px solid #e9ebed"><code>${r.sessionId}</code></td>
+            <td style="padding:10px 12px;border-bottom:1px solid #e9ebed"><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600;${r.reason && r.reason.startsWith('auto') ? 'background:#fee2e2;color:#dc2626' : 'background:#e8f4fd;color:#1d4ed8'}">${r.reason}</span></td>
+            <td style="padding:10px 12px;border-bottom:1px solid #e9ebed">${r.revokedAt ? new Date(r.revokedAt * 1000).toLocaleString() : '—'}</td>
+        </tr>`).join('');
+    } catch (err) {
+        document.getElementById('dashTable').innerHTML = `<tr><td colspan="3" style="text-align:center;padding:40px;color:#6b7280">Error: ${err.message}</td></tr>`;
+    }
+}
+loadDashboard();
+setInterval(loadDashboard, 15000);
 </script>
 </body>
 </html>
