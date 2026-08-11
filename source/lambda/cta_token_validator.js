@@ -123,7 +123,7 @@ async function handler(event) {
         else {
             token = extractPathToken(request);
             if (!token) {
-                return { statusCode: 401, body: "missing_token" };
+                return { statusCode: 401, headers: { 'cache-control': { value: 'no-store' } }, body: "missing_token" };
             }
             
             var cwt = cf.cwt.validateToken(Buffer.from(token, 'base64url'), { key: signingKey });
@@ -143,7 +143,7 @@ async function handler(event) {
                 var cti = String(payload[CTA.CTI]);
                 var revoked = await kvs.get("revoked:" + cti);
                 if (revoked) {
-                    return { statusCode: 401, body: "token_revoked" };
+                    return { statusCode: 401, headers: { 'cache-control': { value: 'no-store' } }, body: "token_revoked" };
                 }
             } catch (e) {
                 // Key not found in KVS means not revoked — continue
@@ -157,6 +157,6 @@ async function handler(event) {
         return request;
         
     } catch (e) {
-        return { statusCode: 401, body: e.message };
+        return { statusCode: 401, headers: { 'cache-control': { value: 'no-store' } }, body: e.message };
     }
 }
