@@ -5,7 +5,7 @@
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1035.0",
     "@aws-sdk/client-cloudfront-keyvaluestore": "^3.1034.0",
-    "@aws-sdk/client-secrets-manager": "^3.622.0",
+    "@aws-sdk/client-secrets-manager": "^3.1035.0",
     "@aws-sdk/client-ssm": "^3.1035.0",
     "@aws-sdk/signature-v4a": "^3.1031.0",
     "cbor-x": "^1.6.4"
