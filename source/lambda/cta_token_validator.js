@@ -128,9 +128,11 @@ async function handler(event) {
             
             var cwt = cf.cwt.validateToken(Buffer.from(token, 'base64url'), { key: signingKey });
             payload = cwt.payload;
-            
-            // Strip token from path before sending to origin
-            var segments = request.uri.split('/');
+        }
+        
+        // Always strip path token if present (supports hybrid: header auth + stale path token)
+        var segments = request.uri.split('/');
+        if (segments[1] && segments[1].length > 50) {
             segments.splice(1, 1);
             request.uri = segments.join('/') || '/';
         }

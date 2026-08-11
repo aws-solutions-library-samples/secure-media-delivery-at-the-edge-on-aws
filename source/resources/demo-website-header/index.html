@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CTA-5007-B Header-Only Token Demo</title>
+    <script src="lib/hls.min.js"></script>
+    <script src="lib/dash.all.min.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Amazon Ember Display', 'Helvetica Neue', Arial, sans-serif; color: #161b26; background: #f3f3f7; }
+
+        .hero {
+            background:
+                linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.75) 50%, #fff 100%),
+                conic-gradient(from 180deg at 50% 100%, #a78bfa 40%, #6366f1 45%, #818cf8 50%, #60a5fa 55%, #60a5fa 60%);
+            padding: 80px 120px 40px;
+        }
+        .hero-tag {
+            display: inline-block; padding: 4px 8px; border-radius: 4px;
+            background: linear-gradient(90deg, #a78bfa, #60a5fa);
+            font-size: 14px; line-height: 20px; color: #161b26;
+        }
+        .hero h1 { font-size: 48px; font-weight: 700; line-height: 1.13; margin-top: 32px; }
+        .hero p.sub { font-size: 20px; line-height: 1.4; color: #232b37; margin-top: 16px; max-width: 700px; }
+
+        .section { background: #fff; padding: 56px 120px; }
+        .section + .section { border-top: 1px solid #e9ebed; }
+        .section h2 { font-size: 32px; font-weight: 700; line-height: 1.25; margin-bottom: 24px; }
+        .section p.desc { font-size: 16px; line-height: 1.5; color: #232b37; margin-bottom: 24px; max-width: 600px; }
+
+        .player-wrap { position: relative; width: 100%; border-radius: 8px; overflow: hidden; background: #000; aspect-ratio: 16/9; }
+        .player-wrap video { width: 100%; height: 100%; display: block; object-fit: contain; }
+
+        .card { background: #f8f8fa; border: 1px solid #e9ebed; border-radius: 8px; padding: 24px; margin-top: 32px; }
+        .card h3 { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
+        .field { margin-bottom: 12px; }
+        .field label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 4px; color: #232b37; }
+        .field input, .field select {
+            width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 4px;
+            font-size: 14px; font-family: inherit; background: #fff;
+        }
+        .field input:focus, .field select:focus { outline: none; border-color: #a78bfa; box-shadow: 0 0 0 2px rgba(167,139,250,0.3); }
+
+        .btn {
+            display: inline-block; padding: 10px 20px; border: none; border-radius: 4px;
+            font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; margin-right: 8px; margin-top: 8px;
+        }
+        .btn-primary { background: #4f46e5; color: #fff; }
+        .btn-primary:hover { background: #4338ca; }
+        .btn-secondary { background: #fff; color: #161b26; border: 1px solid #d1d5db; }
+        .btn-secondary:hover { background: #f3f3f7; }
+        .btn:disabled { opacity: 0.4; cursor: default; }
+
+        .token-box { background: #ede9fe; border-radius: 4px; padding: 16px; margin-top: 16px; font-size: 13px; word-break: break-all; }
+        .token-box strong { display: block; margin-bottom: 4px; font-size: 14px; }
+
+        .log-box { background: #161b26; color: #a3e635; border-radius: 8px; padding: 16px; margin-top: 32px; font-family: 'Amazon Ember Mono', 'Courier New', monospace; font-size: 12px; line-height: 1.6; max-height: 200px; overflow-y: auto; }
+        .log-box .error { color: #f87171; }
+        .log-box .warn { color: #fbbf24; }
+        .log-box .info { color: #94a3b8; }
+
+        .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+
+        .steps { counter-reset: step; list-style: none; padding: 0; }
+        .steps li { counter-increment: step; padding-left: 36px; position: relative; margin-bottom: 16px; font-size: 14px; line-height: 1.5; color: #232b37; }
+        .steps li::before {
+            content: counter(step);
+            position: absolute; left: 0; top: 0;
+            width: 24px; height: 24px; border-radius: 50%; background: #4f46e5; color: #fff;
+            font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+        }
+        .steps code { background: #ede9fe; padding: 1px 4px; border-radius: 2px; font-size: 12px; }
+
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 700; text-transform: uppercase; margin-left: 8px; }
+        .badge-header { background: #ede9fe; color: #4f46e5; }
+
+        .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 8px; font-size: 14px; color: #fff; z-index: 100; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+        .toast.show { opacity: 1; }
+        .toast.ok { background: #059669; }
+        .toast.err { background: #dc2626; }
+
+        @media (max-width: 900px) {
+            .hero { padding: 48px 24px 24px; }
+            .hero h1 { font-size: 28px; }
+            .section { padding: 24px; }
+            .cols { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="hero">
+    <span class="hero-tag">Header-Only Mode</span>
+    <h1>CTA-5007-B Header Token Delivery</h1>
+    <p class="sub">Token delivered exclusively via <code>CTA-Common-Access-Token</code> HTTP header — no token in the URL path. Renewal updates the header value transparently.</p>
+    <p style="margin-top:16px;font-size:14px;color:#232b37">
+        <a href="../demo-website/index.html" style="color:#161b26;font-weight:600;text-decoration:underline">Path Mode</a>
+        &nbsp;·&nbsp;
+        <a href="../demo-website-hybrid/index.html" style="color:#161b26;font-weight:600;text-decoration:underline">Hybrid Mode</a>
+        &nbsp;·&nbsp;
+        <a href="../dashboard/dashboard.html" style="color:#161b26;font-weight:600;text-decoration:underline">Revocation Dashboard</a>
+    </p>
+</div>
+
+<div class="section">
+    <div class="cols">
+        <div>
+            <h2>Stream Player <span class="badge badge-header">Header Token</span></h2>
+            <div class="player-wrap">
+                <video id="video" controls playsinline></video>
+            </div>
+            <div class="log-box" id="logBox">
+                <div id="logEntries"></div>
+            </div>
+        </div>
+        <div>
+            <div class="card">
+                <h3>Generate Token (Header Delivery)</h3>
+                <div class="field">
+                    <label>Player</label>
+                    <select id="playerType" onchange="switchPlayer()">
+                        <option value="hls" selected>HLS.js</option>
+                        <option value="dash">DASH.js</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Stream URL (plain — no token in path)</label>
+                    <input type="text" id="streamUrl" placeholder="Populated from config">
+                </div>
+                <div class="field">
+                    <label>Path Restriction (CATU claim)</label>
+                    <input type="text" id="pathRestriction" placeholder="/video/">
+                </div>
+                <div class="field">
+                    <label>Token SDK</label>
+                    <select id="sdk">
+                        <option value="node" selected>Node.js</option>
+                        <option value="python">Python</option>
+                        <option value="ruby">Ruby</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>TTL</label>
+                    <select id="ttl">
+                        <option value="1m">1 min (test renewal)</option>
+                        <option value="1h">1 hour</option>
+                        <option value="2h" selected>2 hours</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Country Restriction</label>
+                    <input type="text" id="countries" placeholder="us,ca,gb">
+                </div>
+                <div class="field">
+                    <label>IP Restriction <span id="ipHint" style="font-weight:400;color:#6b7280;font-size:12px"></span></label>
+                    <input type="text" id="ipRestriction" placeholder="Leave empty to skip">
+                </div>
+                <button class="btn btn-primary" onclick="generateAndPlay()">Generate Token &amp; Play</button>
+                <button class="btn btn-secondary" id="revokeBtn" onclick="revokeToken()" disabled>Revoke Token</button>
+            </div>
+
+            <div class="token-box" id="tokenBox" style="display:none">
+                <strong>Token Info</strong>
+                <div>Session: <span id="tokenId"></span></div>
+                <div>Expires: <span id="tokenExpiry"></span></div>
+                <div>Delivery: <span id="tokenType">header</span></div>
+                <div>Header: <code>CTA-Common-Access-Token</code></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <h2>How Header-Only Flow Works</h2>
+    <p class="desc">The player attaches the CWT token as an HTTP header on every request. Renewal simply swaps the header value — no URL changes needed.</p>
+    <ol class="steps">
+        <li>Web app calls <code>POST /token</code> to get a CWT token (no signed URL needed)</li>
+        <li>Player configures <code>xhrSetup</code> to attach <code>CTA-Common-Access-Token: &lt;token&gt;</code> on every request</li>
+        <li>CloudFront Function reads the header, validates the COSE MAC0 token, and forwards to origin</li>
+        <li>Before expiry, the app calls <code>POST /token</code> again and updates the header value — zero playback interruption</li>
+    </ol>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="config.js"></script>
+<script src="cta-client.js"></script>
+<script>
+const API_ENDPOINT = window.CTA_CONFIG?.apiEndpoint || '';
+let hls = null;
+let dashPlayer = null;
+let currentToken = null;
+let currentSessionId = null;
+let tokenExpiresAt = 0;
+let renewalTimer = null;
+
+function log(msg, type = 'info') {
+    const el = document.getElementById('logEntries');
+    const ts = new Date().toLocaleTimeString();
+    el.innerHTML += `<div class="${type}">[${ts}] ${msg}</div>`;
+    el.parentElement.scrollTop = el.parentElement.scrollHeight;
+}
+
+function toast(msg, ok = true) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show ' + (ok ? 'ok' : 'err');
+    setTimeout(() => t.className = 'toast', 3000);
+}
+
+function updateTokenUI(id, expiry) {
+    document.getElementById('tokenId').textContent = id;
+    document.getElementById('tokenExpiry').textContent = expiry ? new Date(expiry * 1000).toLocaleString() : 'N/A';
+    document.getElementById('tokenBox').style.display = '';
+    document.getElementById('revokeBtn').disabled = false;
+}
+
+function scheduleRenewal() {
+    if (renewalTimer) clearTimeout(renewalTimer);
+    const now = Math.floor(Date.now() / 1000);
+    const timeLeft = tokenExpiresAt - now;
+    const renewIn = Math.max((timeLeft * 2 / 3) * 1000, 5000);
+    log(`⏱ Token expires in ${timeLeft}s, renewal in ${Math.round(renewIn/1000)}s`, 'info');
+    renewalTimer = setTimeout(renewToken, renewIn);
+}
+
+async function renewToken() {
+    try {
+        const streamUrl = document.getElementById('streamUrl').value;
+        const pathRestriction = document.getElementById('pathRestriction').value;
+        const ttl = document.getElementById('ttl').value;
+        const sdk = document.getElementById('sdk').value;
+        const sdkName = {node: 'Node.js', python: 'Python', ruby: 'Ruby'}[sdk];
+
+        log(`🔄 RENEWING TOKEN via ${sdkName} SDK (header delivery)...`, 'warn');
+        const oldToken = currentToken.substring(0, 20) + '…';
+
+        const client = new CTAClient(API_ENDPOINT);
+        const policy = {
+            paths: pathRestriction ? [pathRestriction] : undefined,
+            ttl,
+            ips: document.getElementById('ipRestriction').value.trim() || undefined,
+            placement: 'header',
+            sessionId: currentSessionId
+        };
+
+        const result = await client.generateToken(policy, {}, streamUrl, sdk);
+        currentToken = result.token;
+        tokenExpiresAt = result.expiresAt;
+
+        const newToken = currentToken.substring(0, 20) + '…';
+        updateTokenUI(currentSessionId, result.expiresAt);
+
+        log('✅ TOKEN RENEWED (header swap only — no URL change)', 'warn');
+        log(`   old: ${oldToken}`, 'warn');
+        log(`   new: ${newToken}`, 'warn');
+        log(`   expires: ${new Date(result.expiresAt * 1000).toLocaleTimeString()}`, 'warn');
+        toast('Token renewed');
+
+        scheduleRenewal();
+    } catch (err) {
+        log('❌ Renewal failed: ' + err.message, 'error');
+    }
+}
+
+async function generateAndPlay() {
+    try {
+        const streamUrl = document.getElementById('streamUrl').value;
+        const pathRestriction = document.getElementById('pathRestriction').value;
+        const ttl = document.getElementById('ttl').value;
+        const countries = document.getElementById('countries').value;
+        const sdk = document.getElementById('sdk').value;
+        const sdkName = {node: 'Node.js', python: 'Python', ruby: 'Ruby'}[sdk];
+
+        const client = new CTAClient(API_ENDPOINT);
+        const sessionId = 'header-' + Date.now();
+
+        const policy = {
+            paths: pathRestriction ? [pathRestriction] : undefined,
+            ttl,
+            countries: countries ? countries.split(',').map(c => c.trim()).filter(Boolean) : undefined,
+            ips: document.getElementById('ipRestriction').value.trim() || undefined,
+            placement: 'header',
+            sessionId
+        };
+
+        log(`Generating CWT token via ${sdkName} SDK (header delivery)...`);
+        const result = await client.generateToken(policy, {}, streamUrl, sdk);
+
+        currentToken = result.token;
+        currentSessionId = sessionId;
+        tokenExpiresAt = result.expiresAt;
+
+        updateTokenUI(sessionId, result.expiresAt);
+        toast('Token generated');
+        log('✅ Token generated — delivering via CTA-Common-Access-Token header', 'info');
+        log(`   token: ${result.token.substring(0, 20)}…`, 'info');
+        log(`   stream: ${streamUrl}`, 'info');
+
+        const playerType = document.getElementById('playerType').value;
+        if (playerType === 'dash') {
+            loadDash(streamUrl);
+        } else {
+            loadHls(streamUrl);
+        }
+        scheduleRenewal();
+    } catch (err) {
+        toast(err.message, false);
+        log('❌ ' + err.message, 'error');
+    }
+}
+
+function loadHls(streamUrl) {
+    const video = document.getElementById('video');
+    if (hls) hls.destroy();
+    if (dashPlayer) { dashPlayer.destroy(); dashPlayer = null; }
+
+    if (!Hls.isSupported()) {
+        log('❌ HLS.js not supported in this browser', 'error');
+        return;
+    }
+
+    let reqCount = 0;
+    hls = new Hls({
+        xhrSetup(xhr, url) {
+            reqCount++;
+            const seg = url.split('/').pop().split('?')[0];
+            // Attach CWT token as header on every request
+            xhr.setRequestHeader('CTA-Common-Access-Token', currentToken);
+            log(`#${reqCount} GET ${seg} [header: CTA-Common-Access-Token]`, 'info');
+        }
+    });
+
+    hls.loadSource(streamUrl);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED, () => { log('▶ Manifest loaded', 'info'); video.play(); });
+    hls.on(Hls.Events.ERROR, (_, d) => {
+        if (d.response && d.response.code === 401) {
+            log(`🚫 Access denied: ${d.response.text || 'unauthorized'}`, 'error');
+            hls.destroy(); hls = null; video.pause();
+            toast('Access denied', false);
+            return;
+        }
+        if (d.fatal) log('❌ ' + d.details, 'error');
+    });
+    log('🎬 HLS player started (header-only mode)');
+}
+
+function loadDash(streamUrl) {
+    const video = document.getElementById('video');
+    if (hls) { hls.destroy(); hls = null; }
+    if (dashPlayer) { dashPlayer.destroy(); dashPlayer = null; }
+
+    let reqCount = 0;
+    dashPlayer = dashjs.MediaPlayer().create();
+
+    dashPlayer.extend('RequestModifier', function () {
+        return {
+            modifyRequestURL: function (url) {
+                reqCount++;
+                const seg = url.split('/').pop().split('?')[0];
+                log(`#${reqCount} GET ${seg} [header: CTA-Common-Access-Token]`, 'info');
+                return url;
+            },
+            modifyRequestHeader: function (request) {
+                request.setRequestHeader('CTA-Common-Access-Token', currentToken);
+                return request;
+            }
+        };
+    }, true);
+
+    dashPlayer.on(dashjs.MediaPlayer.events.ERROR, function (e) {
+        if (e.error) {
+            const msg = e.error.message || e.error.code;
+            log(`🚫 DASH error: ${msg}`, 'error');
+            if (String(msg).includes('401') || String(msg).includes('403')) {
+                dashPlayer.destroy(); dashPlayer = null; video.pause();
+                toast('Access denied', false);
+            }
+        }
+    });
+
+    dashPlayer.initialize(video, streamUrl, true);
+    log('🎬 DASH player started (header-only mode)');
+}
+
+async function revokeToken() {
+    if (!currentSessionId) return;
+    try {
+        const client = new CTAClient(API_ENDPOINT);
+        await client.revokeToken(currentSessionId, 'manual');
+        toast('Token revoked');
+        log('🚫 Token revoked — next request will fail', 'warn');
+        document.getElementById('revokeBtn').disabled = true;
+    } catch (err) {
+        toast(err.message, false);
+    }
+}
+
+log('🔐 CTA-5007-B Header-Only Demo Ready');
+
+const CDN = window.CTA_CONFIG?.cdnDomain || '';
+const STREAMS = {
+    hls: { url: CDN + '/securemedia/index.m3u8', path: '/securemedia/' },
+    dash: { url: CDN + '/securemedia/index.mpd', path: '/securemedia/' }
+};
+document.getElementById('streamUrl').value = STREAMS.hls.url;
+document.getElementById('pathRestriction').value = STREAMS.hls.path;
+
+function switchPlayer() {
+    const type = document.getElementById('playerType').value;
+    document.getElementById('streamUrl').value = STREAMS[type].url;
+    document.getElementById('pathRestriction').value = STREAMS[type].path;
+    if (hls) { hls.destroy(); hls = null; }
+    if (dashPlayer) { dashPlayer.destroy(); dashPlayer = null; }
+    document.getElementById('video').pause();
+}
+
+fetch('https://api64.ipify.org').then(r => r.text()).then(ip => {
+    ip = ip.trim();
+    document.getElementById('ipHint').textContent = `(detected: ${ip})`;
+    document.getElementById('ipRestriction').placeholder = ip;
+    log(`🌐 Detected IP: ${ip}`, 'info');
+}).catch(() => {});
+</script>
+</body>
+</html>
