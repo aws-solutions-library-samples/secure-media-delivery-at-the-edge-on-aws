@@ -50,8 +50,18 @@ function validateClaims(payload, request, viewerIp) {
     }
     
     // URI path validation (catu → path → prefix_match)
+    // Supports single prefix string or array of prefix strings per CTA-5007-B
     if (payload[CTA.CATU] && payload[CTA.CATU][Catu.PATH] && payload[CTA.CATU][Catu.PATH][CatuMatch.PREFIX]) {
-        if (!request.uri.startsWith(payload[CTA.CATU][Catu.PATH][CatuMatch.PREFIX])) {
+        var prefixes = payload[CTA.CATU][Catu.PATH][CatuMatch.PREFIX];
+        if (typeof prefixes === 'string') prefixes = [prefixes];
+        var pathMatch = false;
+        for (var i = 0; i < prefixes.length; i++) {
+            if (request.uri.startsWith(prefixes[i])) {
+                pathMatch = true;
+                break;
+            }
+        }
+        if (!pathMatch) {
             throw new Error("uri_not_allowed");
         }
     }

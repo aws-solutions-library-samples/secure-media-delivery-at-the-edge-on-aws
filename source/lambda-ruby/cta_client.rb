@@ -130,7 +130,10 @@ module CTA
       sid = policy[:sessionId] || policy['sessionId']
       claims[CWT::CTI] = sid if sid
       paths = policy[:paths] || policy['paths']
-      claims[CAT::CATU] = { CATU::PATH => { MATCH::PREFIX => paths.first } } if paths&.first
+      if paths&.any?
+        prefixes = paths.length == 1 ? paths.first : paths
+        claims[CAT::CATU] = { CATU::PATH => { MATCH::PREFIX => prefixes } }
+      end
       ips = policy[:ips] || policy['ips']
       claims[CAT::CATNIP] = Array(ips) if ips
       countries = policy[:countries] || policy['countries']

@@ -130,8 +130,10 @@ def handler(event:, context:)
     claims[CTA::CWT::CTI] = policy['sessionId'] if policy['sessionId']
 
     # URI restriction: catu(401) → path(2) → prefix_match(1)
-    if policy['paths']&.first
-      claims[CTA::CAT::CATU] = { CTA::CATU::PATH => { CTA::MATCH::PREFIX => policy['paths'].first } }
+    # Supports multiple path prefixes per CTA-5007-B
+    if policy['paths']&.any?
+      prefixes = policy['paths'].length == 1 ? policy['paths'].first : policy['paths']
+      claims[CTA::CAT::CATU] = { CTA::CATU::PATH => { CTA::MATCH::PREFIX => prefixes } }
     end
 
     # IP restriction: catnip(402) — array of allowed IPs

@@ -105,9 +105,11 @@ exports.handler = async (event) => {
         claims.set(CWT.NBF, now);
         claims.set(CWT.IAT, now);
         if (policy.sessionId) claims.set(CWT.CTI, policy.sessionId);
-        if (policy.paths?.[0]) {
+        if (policy.paths?.length) {
             // URI restriction: catu(401) → path(2) → prefix_match(1)
-            claims.set(CAT.CATU, new Map([[CATU.PATH, new Map([[MATCH.PREFIX, policy.paths[0]]])]]));
+            // Supports multiple path prefixes per CTA-5007-B
+            const prefixes = policy.paths.length === 1 ? policy.paths[0] : policy.paths;
+            claims.set(CAT.CATU, new Map([[CATU.PATH, new Map([[MATCH.PREFIX, prefixes]])]]));
         }
         if (policy.ips) {
             // IP restriction: catnip(402) — array of allowed IPs
