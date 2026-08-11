@@ -228,6 +228,78 @@ Signing keys are stored in Secrets Manager and synced to CloudFront KeyValueStor
 3. Syncs to KVS as `key:default`
 4. Preserves previous key as `key:previous` for graceful transition
 
+## WAF Rate Limiting
+
+A WAFv2 Web ACL is attached to the CloudFront distribution to prevent automated token minting abuse. The default rule rate-limits `POST /api/token*` requests per source IP.
+
+### Default Configuration
+
+| Setting | Value |
+|---------|-------|
+| Rule name | `TokenMintRateLimit` |
+| Rate limit | 300 requests per 5-minute window (~60/min per IP) |
+| Scope | Requests matching `STARTS_WITH /api/token` |
+| Action | Block with HTTP 429 + JSON error body |
+| Metrics | CloudWatch metrics enabled, sampled requests enabled |
+
+The 300 req/5min threshold is well above legitimate player traffic (a viewer typically mints one token per TTL — e.g., once every 2 hours) but tight enough to block automated scraping.
+
+### Blocked Response
+
+When rate-limited, clients receive:
+
+```json
+HTTP/1.1 429 Too Many Requests
+{
+  "error": "rate_limited",
+  "message": "Too many token mint requests from this IP; try again in a few minutes."
+}
+```
+
+### Editing WAF Rules
+
+The Web ACL ARN is available in the stack outputs (`WebAclArn`). To modify rules:
+
+**Via AWS Console:**
+1. Navigate to **WAF & Shield** → **Web ACLs** → Select `CTASecureMedia-token-rate-limit`
+2. Edit the `TokenMintRateLimit` rule to adjust the rate limit, scope, or action
+3. Add additional rules (geo-blocking, IP allowlists, managed rule groups, etc.)
+
+**Via AWS CLI:**
+
+```bash
+# Get current Web ACL configuration
+aws wafv2 get-web-acl \
+  --name CTASecureMedia-token-rate-limit \
+  --scope CLOUDFRONT \
+  --region us-east-1 \
+  --id <web-acl-id>
+
+# Update the rate limit (example: change to 100 req/5min)
+aws wafv2 update-web-acl \
+  --name CTASecureMedia-token-rate-limit \
+  --scope CLOUDFRONT \
+  --region us-east-1 \
+  --id <web-acl-id> \
+  --lock-token <lock-token> \
+  --default-action Allow={} \
+  --rules '[...]' \
+  --visibility-config '...'
+```
+
+**Via CDK (permanent change):**
+
+Edit `source/lib/cta-secure-media-stack.ts` and modify the `rateBasedStatement.limit` value in the `CTAWebAcl` construct, then redeploy.
+
+### Adding Custom Rules
+
+Common additions to the Web ACL:
+
+- **Geo-blocking**: Block token requests from specific countries
+- **IP allowlist**: Only allow token minting from known backend IPs (e.g., your CMS servers)
+- **AWS Managed Rules**: Add `AWSManagedRulesCommonRuleSet` for general web protection
+- **Bot Control**: Add `AWSManagedRulesBotControlRuleSet` to block automated clients
+
 ## Real-Time Log Analysis (Auto-Revocation Stack)
 
 An optional second CDK stack adds AI-powered session analysis:
