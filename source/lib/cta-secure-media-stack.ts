@@ -461,8 +461,16 @@ export class CTASecureMediaStack extends Stack {
     
     if (config.main.enableDemo) {
       new CfnOutput(this, "DemoWebsiteUrl", { 
-        value: `https://${distribution.distributionDomainName}/website/index.html`,
-        description: "CTA Demo Website URL"
+        value: `https://${distribution.distributionDomainName}/website/index-path.html`,
+        description: "CTA Demo Website — Path Token Mode"
+      });
+      new CfnOutput(this, "DemoWebsiteHeaderUrl", { 
+        value: `https://${distribution.distributionDomainName}/website/index-header.html`,
+        description: "CTA Demo Website — Header-Only Token Mode"
+      });
+      new CfnOutput(this, "DemoWebsiteHybridUrl", { 
+        value: `https://${distribution.distributionDomainName}/website/index-hybrid.html`,
+        description: "CTA Demo Website — Hybrid (Path Init → Header Renewal)"
       });
     }
     

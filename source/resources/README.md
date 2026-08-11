@@ -1,18 +1,18 @@
 # Demo Websites — CTA-5007-B Token Delivery Modes
 
-This directory contains three demo websites that demonstrate different token delivery strategies for CTA-5007-B (Common Access Token) protected streaming content. All three use the same CloudFront Function validator and token generation API.
+The `demo-website/` directory contains three demo pages that demonstrate different token delivery strategies for CTA-5007-B (Common Access Token) protected streaming content. All three use the same CloudFront Function validator and token generation API, deployed to S3 and served at `/website/*` via CloudFront.
 
-## Sites
+## Pages
 
-| Directory | Mode | Initial Playback | Token Renewal |
-|-----------|------|------------------|---------------|
-| `demo-website/` | **Path** | Token in URL path | API → new path token swapped via `xhrSetup` |
-| `demo-website-header/` | **Header-Only** | Token in `CTA-Common-Access-Token` header | API → new header value (no URL change) |
-| `demo-website-hybrid/` | **Hybrid (Path → Header)** | Token in URL path (CMS-friendly) | API → switches to header delivery |
+| File | Mode | URL |
+|------|------|-----|
+| `index-path.html` | **Path** | `https://<dist>/website/index-path.html` |
+| `index-header.html` | **Header-Only** | `https://<dist>/website/index-header.html` |
+| `index-hybrid.html` | **Hybrid (Path → Header)** | `https://<dist>/website/index-hybrid.html` |
 
 ## Token Delivery Comparison
 
-### Path Mode (`demo-website/`)
+### Path Mode (`index-path.html`)
 
 ```
 Initial:  GET /{TOKEN₁}/video/stream.m3u8
@@ -23,7 +23,7 @@ Renewal:  GET /{TOKEN₂}/video/stream.m3u8  (URL rewritten by player)
 - **Cons**: Renewal requires URL rewriting in the player's request interceptor
 - **Best for**: Simple integrations where the CMS owns token generation
 
-### Header-Only Mode (`demo-website-header/`)
+### Header-Only Mode (`index-header.html`)
 
 ```
 Initial:  GET /video/stream.m3u8  +  CTA-Common-Access-Token: <TOKEN₁>
@@ -34,14 +34,14 @@ Renewal:  GET /video/stream.m3u8  +  CTA-Common-Access-Token: <TOKEN₂>
 - **Cons**: Player must configure request interceptor from the start; CMS cannot embed auth in a URL
 - **Best for**: Web apps that manage their own token lifecycle
 
-### Hybrid Mode (`demo-website-hybrid/`)
+### Hybrid Mode (`index-hybrid.html`)
 
 ```
 Initial:  GET /{TOKEN₁}/video/stream.m3u8                    (path — CMS provides signed URL)
 Renewal:  GET /{TOKEN₁}/video/stream.m3u8  +  CTA-Common-Access-Token: <TOKEN₂>  (header wins)
 ```
 
-- **Pros**: CMS generates initial URL (no player changes needed for first load); renewal is clean header-swap
+- **Pros**: CMS generates initial URL (no player changes for first load); renewal is a clean header-swap
 - **Cons**: Stale path token remains in URL (CloudFront Function strips it harmlessly)
 - **Best for**: Production deployments where CMS generates initial playback URLs but the player handles renewal
 
@@ -74,11 +74,6 @@ All three demos use the same renewal strategy:
 2. **Call `POST /token`** to get a fresh CWT token from the API
 3. **Deliver the new token** on subsequent requests (method depends on the mode)
 
-The `POST /token` API accepts a `placement` field:
-- `"path"` → returns `{ token, signedUrl, expiresAt }`
-- `"header"` → returns `{ token, url, headers: { "CTA-Common-Access-Token": token }, expiresAt }`
-- `"query"` → returns `{ token, signedUrl (with ?CAT=), expiresAt }`
-
 ## Player Configuration
 
 ### HLS.js — Header injection
@@ -105,7 +100,7 @@ dashPlayer.extend('RequestModifier', function () {
 }, true);
 ```
 
-### HLS.js — Path token swap (original demo)
+### HLS.js — Path token swap (path demo)
 
 ```javascript
 const hls = new Hls({
@@ -113,7 +108,7 @@ const hls = new Hls({
         const u = new URL(url);
         const parts = u.pathname.split('/');
         if (parts[1] && parts[1].length > 50) {
-            parts[1] = currentToken; // Swap old token for new
+            parts[1] = currentToken;
         }
         xhr.open('GET', `${u.origin}${parts.join('/')}`, true);
     }
@@ -122,12 +117,12 @@ const hls = new Hls({
 
 ## Configuration
 
-Each demo site loads a `config.js` file that should be generated at deploy time:
+Each demo page loads `config.js`, generated at deploy time by CDK:
 
 ```javascript
 window.CTA_CONFIG = {
-    apiEndpoint: 'https://<distribution-id>.cloudfront.net/api',
-    cdnDomain: 'https://<distribution-id>.cloudfront.net'
+    apiEndpoint: 'https://<distribution>/api',
+    cdnDomain: 'https://<distribution>'
 };
 ```
 
