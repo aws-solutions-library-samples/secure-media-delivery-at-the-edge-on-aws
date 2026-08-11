@@ -252,6 +252,76 @@ Query parameter transport (`?CAT=<token>`) works with all players and all distri
 
 The recommended approach: exclude `CAT` from the cache key and let the validator strip it.
 
+## Extending the Validator with Additional Claims
+
+The CloudFront Function validator can be extended to enforce additional viewer attributes beyond IP, country, and URI path. CloudFront provides a rich set of geo and device headers that can be used as token claims.
+
+### Available CloudFront Viewer Headers
+
+| Header | Example Value | Use Case |
+|--------|---------------|----------|
+| `cloudfront-viewer-country` | `US` | Country restriction (already implemented) |
+| `cloudfront-viewer-country-region` | `CA` (California) | State/province restriction |
+| `cloudfront-viewer-city` | `Seattle` | City-level geo-fencing |
+| `cloudfront-viewer-postal-code` | `98101` | Postal code restriction |
+| `cloudfront-viewer-metro-code` | `819` | DMA/metro area blackouts |
+| `cloudfront-viewer-latitude` | `47.6062` | Coordinate-based geo-fencing |
+| `cloudfront-viewer-longitude` | `-122.3321` | Coordinate-based geo-fencing |
+| `cloudfront-viewer-asn` | `16509` | ISP/network restriction |
+| `cloudfront-viewer-tls` | `TLSv1.3` | Minimum TLS enforcement |
+| `cloudfront-is-mobile-viewer` | `true` | Device type restriction |
+| `cloudfront-is-tablet-viewer` | `true` | Device type restriction |
+| `cloudfront-is-desktop-viewer` | `true` | Device type restriction |
+| `cloudfront-is-smarttv-viewer` | `true` | Device type restriction |
+
+These headers must be enabled in your cache policy or origin request policy for CloudFront to populate them.
+
+### How to Add a New Check
+
+Adding a new claim requires changes in three places:
+
+**1. Token Generator** — add the claim to the CWT claims map:
+
+```javascript
+// Example: metro/DMA code restriction
+if (policy.metroCodes) {
+    claims.set(817, policy.metroCodes); // custom claim key
+}
+```
+
+**2. CloudFront Function Validator** — add validation logic in `validateClaims()`:
+
+```javascript
+// Example: metro/DMA code check
+if (payload["817"]) {
+    var metro = request.headers["cloudfront-viewer-metro-code"];
+    if (!metro || payload["817"].indexOf(metro.value) === -1) {
+        throw new Error("metro_restricted");
+    }
+}
+```
+
+**3. CDK Stack** — include the header in the cache policy so CloudFront populates it:
+
+```typescript
+cachePolicy: new cloudfront.CachePolicy(this, "CTACachePolicy", {
+    headerBehavior: cloudfront.CacheHeaderBehavior.allowList(
+        "CloudFront-Viewer-Country",
+        "CloudFront-Viewer-Metro-Code"  // add new headers here
+    ),
+}),
+```
+
+### Cache-Key Rule
+
+**Any header used for an access decision must be included in the cache key.** If a header is used to allow or deny access but is not part of the cache key, a successful response can be cached and served to a viewer with a different value for that header — bypassing the restriction.
+
+For example: if you enforce `cloudfront-viewer-metro-code` but don't include it in the cache key, a viewer in an allowed DMA gets their response cached, and a viewer in a blocked DMA receives the cached success.
+
+### CloudFront Function Size Limit
+
+CloudFront Functions have a **10 KB code size limit**. Each additional check adds code to the validator. Plan your claim set carefully — if you need many complex checks (regex matching, haversine distance calculations, large allowlists), you may approach this ceiling. Keep validation logic concise and avoid inlining large data structures in the function code; use KVS lookups for dynamic data instead.
+
 ## Key Rotation
 
 Signing keys are stored in Secrets Manager and synced to CloudFront KeyValueStore. Rotation is handled by a Step Functions workflow:
