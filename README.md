@@ -219,6 +219,39 @@ The revocation propagates to CloudFront edge locations via KeyValueStore within 
 | `/website/index-hybrid.html` | Hybrid — path init, header renewal |
 | `/website/dashboard.html` | Revocation dashboard + Bedrock prompt editor |
 
+## Token Transport Compatibility
+
+The CloudFront Function validator supports three token delivery methods. Each has different compatibility characteristics depending on your distribution shape and player environment.
+
+| Transport | Multi-behavior distributions | Native `<video>` players | CORS overhead | Cache-key considerations |
+|-----------|:---------------------------:|:------------------------:|:-------------:|--------------------------|
+| **Path** `/{TOKEN}/...` | ❌ | ✅ | None | Token is stripped before origin; no cache pollution |
+| **Header** `CTA-Common-Access-Token` | ✅ | ❌ | Preflight per cross-origin request | Include header in cache key or use `no-store` on origin |
+| **Query** `?CAT=<token>` | ✅ | ✅ | None | Strip `CAT` from cache key or accept per-viewer caching |
+
+### Path tokens require a single-behavior distribution
+
+CloudFront matches requests to cache behaviors based on the **original URI before the viewer-request function runs**. A URL like `/{TOKEN}/broadcast/foo.m3u8` matches the default behavior (`/*`), not a `/broadcast/*` behavior — even though the function strips the token prefix.
+
+Path transport works when all protected content is served by the default behavior (the demo's distribution shape). If your distribution has multiple content behaviors with distinct path patterns, use header or query transport instead.
+
+### Header tokens require MSE-based players
+
+Custom HTTP headers cannot be set on native `<video src="...">` elements. Header transport requires a JavaScript-based player with request interceptor support:
+- **HLS.js** — `xhrSetup` callback
+- **DASH.js** — `RequestModifier` extension
+- **Shaka Player** — request/response filters
+
+This excludes iOS Safari's native HLS player (non-MSE). If you need native player support, use query transport.
+
+### Query tokens are universal but need cache-key planning
+
+Query parameter transport (`?CAT=<token>`) works with all players and all distribution shapes. However:
+- If your cache policy **includes** `CAT` in the query string allowlist, each viewer gets a unique cache entry (expensive, defeats edge caching)
+- If your cache policy **excludes** `CAT`, the function must strip it before forwarding to origin (the validator already does this via `delete request.querystring["CAT"]`)
+
+The recommended approach: exclude `CAT` from the cache key and let the validator strip it.
+
 ## Key Rotation
 
 Signing keys are stored in Secrets Manager and synced to CloudFront KeyValueStore. Rotation is handled by a Step Functions workflow:
