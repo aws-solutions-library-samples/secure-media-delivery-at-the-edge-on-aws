@@ -337,6 +337,7 @@ export class CTASecureMediaStack extends Stack {
               accessControlAllowHeaders: ["CTA-Common-Access-Token", "Content-Type"],
               accessControlAllowMethods: ["GET", "HEAD", "OPTIONS"],
               accessControlExposeHeaders: ["CTA-Common-Access-Token"],
+              accessControlAllowCredentials: false,
               accessControlMaxAge: Duration.hours(24),
               originOverride: true,
             },
