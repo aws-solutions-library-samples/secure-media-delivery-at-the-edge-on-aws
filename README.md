@@ -92,6 +92,21 @@ Tag(61) CWT {
 | `catnip` | 402 | IP restrictions (array of allowed IPs) |
 | `catgeoiso3166` | 316 | Country restrictions (ISO 3166-1 codes) |
 
+### A Note on IP Restrictions
+
+IP binding (`catnip`) is the strongest anti-sharing signal — if a token is locked to one IP and appears from another, it's clearly being redistributed. However, it's also the most likely to cause **false positives for legitimate mobile viewers**.
+
+A viewer watching on home WiFi who walks to the backyard and their phone switches to cellular will get a new public IP address. Their token is still valid (not expired, not revoked), but the IP no longer matches. The same viewer might also appear to change city if the cellular tower's IP geo-maps to a neighboring town.
+
+**Recommendations:**
+
+- **Short-lived events (live sports):** IP binding is usually safe — viewers stay put for the duration
+- **Long-form content (movies, series):** Consider skipping IP restriction or using it in log-only mode for analytics without enforcement
+- **Mobile-heavy audiences:** Use country or region restrictions instead of IP — they survive WiFi→cellular handoffs within the same geography
+- **If you must bind IP:** Use a short TTL (e.g., `5m`) with frequent renewal. Each renewal captures the viewer's current IP, so a legitimate network switch gets a fresh token on the next renewal cycle
+
+The auto-revocation system (Bedrock analysis) treats a single IP change within the same country as low-risk specifically to avoid flagging these legitimate transitions.
+
 ## SDKs
 
 All three SDKs expose the same API and produce byte-identical COSE MAC0 tokens.
