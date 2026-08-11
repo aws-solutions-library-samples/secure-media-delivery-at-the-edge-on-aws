@@ -124,7 +124,7 @@ export class CTASecureMediaStack extends Stack {
 
     // Token generator (Ruby SDK)
     const generatorRuby = new lambda.Function(this, "CTAGeneratorRuby", {
-      runtime: lambda.Runtime.RUBY_3_3,
+      runtime: lambda.Runtime.RUBY_3_4,
       handler: "handler.handler",
       code: lambda.Code.fromAsset("lambda-ruby"),
       timeout: Duration.seconds(10),
