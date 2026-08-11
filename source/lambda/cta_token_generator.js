@@ -122,7 +122,9 @@ exports.handler = async (event) => {
 
         // Build the signed URL with the token embedded in the path or query string.
         let signedUrl = mediaUrl;
-        if (policy.placement === 'query') {
+        if (policy.placement === 'header') {
+            return { statusCode: 200, headers, body: JSON.stringify({ token, url: mediaUrl, headers: { 'CTA-Common-Access-Token': token }, expiresAt: exp }) };
+        } else if (policy.placement === 'query') {
             const sep = mediaUrl.includes('?') ? '&' : '?';
             signedUrl = `${mediaUrl}${sep}CAT=${token}`;
         } else {

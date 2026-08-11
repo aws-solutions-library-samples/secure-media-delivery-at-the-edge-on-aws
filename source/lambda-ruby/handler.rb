@@ -147,7 +147,19 @@ def handler(event:, context:)
 
     # Build the signed URL with the token embedded in the path or query string.
     uri = URI.parse(media_url)
-    if policy['placement'] == 'query'
+    if policy['placement'] == 'header'
+      return {
+        statusCode: 200,
+        headers: headers,
+        body: JSON.generate({
+          token: token,
+          url: media_url,
+          headers: { 'CTA-Common-Access-Token' => token },
+          expiresAt: exp,
+          sdk: 'ruby'
+        })
+      }
+    elsif policy['placement'] == 'query'
       sep = media_url.include?('?') ? '&' : '?'
       signed_url = "#{media_url}#{sep}CAT=#{token}"
     else

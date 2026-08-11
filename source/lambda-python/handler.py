@@ -170,7 +170,19 @@ def handler(event, context):
         token = base64.urlsafe_b64encode(token_buf).rstrip(b'=').decode()
 
         # Build the signed URL with the token embedded in the path or query string.
-        if policy.get('placement') == 'query':
+        if policy.get('placement') == 'header':
+            return {
+                'statusCode': 200,
+                'headers': headers,
+                'body': json.dumps({
+                    'token': token,
+                    'url': media_url,
+                    'headers': {'CTA-Common-Access-Token': token},
+                    'expiresAt': exp,
+                    'sdk': 'python'
+                })
+            }
+        elif policy.get('placement') == 'query':
             sep = '&' if '?' in media_url else '?'
             signed_url = f'{media_url}{sep}CAT={token}'
         else:
