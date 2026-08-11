@@ -11,10 +11,11 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "postinstall": "npm run build",
+    "postinstall": "npm run build && npm run lambda:install",
+    "lambda:install": "npm install --prefix lambda --omit=dev --no-audit --no-fund",
     "build": "npx tsc",
     "test": "jest --coverage",
-    "deploy": "npx cdk deploy --all",
+    "deploy": "npm run lambda:install && npx cdk deploy --all",
     "wizard": "node dist/bin/wizard/index.js",
     "bootstrap": "npx cdk bootstrap"
   },
