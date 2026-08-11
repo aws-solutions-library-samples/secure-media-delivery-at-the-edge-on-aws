@@ -81,8 +81,9 @@ class CTAClient {
         claims.set(CWT.NBF, now);
         claims.set(CWT.IAT, now);
         if (policy.sessionId) claims.set(CWT.CTI, policy.sessionId);
-        if (policy.paths?.[0]) {
-            claims.set(CAT.CATU, new Map([[CATU.PATH, new Map([[MATCH.PREFIX, policy.paths[0]]])]]));
+        if (policy.paths?.length) {
+            const prefixes = policy.paths.length === 1 ? policy.paths[0] : policy.paths;
+            claims.set(CAT.CATU, new Map([[CATU.PATH, new Map([[MATCH.PREFIX, prefixes]])]]));
         }
         if (policy.countries?.length) claims.set(316, policy.countries);
 

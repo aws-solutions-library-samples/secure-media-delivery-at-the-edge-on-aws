@@ -161,7 +161,8 @@ class CTAClient:
         if policy.get('sessionId'):
             claims[CWT.CTI] = policy['sessionId']
         if policy.get('paths'):
-            claims[CAT.CATU] = {CATU.PATH: {MATCH.PREFIX: policy['paths'][0]}}
+            prefixes = policy['paths'][0] if len(policy['paths']) == 1 else policy['paths']
+            claims[CAT.CATU] = {CATU.PATH: {MATCH.PREFIX: prefixes}}
         if policy.get('countries'):
             claims[316] = policy["countries"]
 
