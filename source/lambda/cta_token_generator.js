@@ -9,7 +9,7 @@
  *
  *   API Gateway (POST /token)
  *       → This Lambda
- *           → Reads HMAC signing key from AWS Secrets Manager (cached after first call)
+ *           → Reads HMAC signing key from AWS Secrets Manager (60-second cache)
  *           → Delegates token generation to the CTA Node.js SDK (./sdk/cta-client.js)
  *           → Returns base64url-encoded CWT token + signed URL
  *
@@ -52,7 +52,7 @@
  *   {
  *     "policy": {
  *       "paths": ["/video/"],     // URI prefix restrictions
- *       "ttl": "2h",              // Token lifetime (e.g. "30s", "5m", "2h", "1d")
+ *       "ttl": "2h",              // Omitted: 2h; positive integer seconds or s/m/h, max 7200 seconds
  *       "placement": "path",      // "path" (default) or "query"
  *       "sessionId": "abc-123"    // Session ID for revocation tracking
  *     },
@@ -73,16 +73,19 @@ const { generateToken, CWT, CAT, CATU, MATCH, parseTTL } = require('./sdk/cta-cl
 
 const secretsManager = new SecretsManagerClient({});
 let cachedKey = null;
+let cacheExpiresAt = 0;
+const KEY_CACHE_MAX_AGE_MS = 60000;
 
 /**
  * Retrieve the HMAC signing key from Secrets Manager.
- * The key is cached in the Lambda execution environment after the first call
- * to avoid repeated API calls across invocations in the same container.
+ * The cache expires 60 seconds after the fetch starts, including fetch latency.
  */
 async function getSigningKey() {
-    if (cachedKey) return cachedKey;
+    const fetchStartedAt = Date.now();
+    if (cachedKey && fetchStartedAt < cacheExpiresAt) return cachedKey;
     const resp = await secretsManager.send(new GetSecretValueCommand({ SecretId: process.env.SECRET_NAME }));
     cachedKey = JSON.parse(resp.SecretString).signingKey;
+    cacheExpiresAt = fetchStartedAt + KEY_CACHE_MAX_AGE_MS;
     return cachedKey;
 }
 
@@ -92,9 +95,10 @@ exports.handler = async (event) => {
         const { policy, mediaUrl } = JSON.parse(event.body);
         if (!policy || !mediaUrl) throw new Error('Missing required fields: policy, mediaUrl');
         if (!/^https?:\/\//.test(mediaUrl)) throw new Error('mediaUrl must be a valid HTTP(S) URL');
+        const ttl = parseTTL(policy.ttl === undefined ? '2h' : policy.ttl);
         const signingKey = await getSigningKey();
         const now = Math.floor(Date.now() / 1000);
-        const exp = now + parseTTL(policy.ttl || '2h');
+        const exp = now + ttl;
 
         // Build CWT claims map with integer keys per CWT/CAT specification.
         // The SDK expects a JavaScript Map (not a plain object) to ensure

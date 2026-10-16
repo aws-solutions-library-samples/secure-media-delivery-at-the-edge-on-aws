@@ -85,6 +85,79 @@ describe('cta_token_generator', () => {
   });
 });
 
+describe('CTA mint rotation boundaries', () => {
+  const { validateToken } = require('../test-support/token-crypto');
+  let handler;
+  const event = ttl => ({ body: JSON.stringify({ policy: ttl === undefined ? {} : { ttl }, mediaUrl: 'https://cdn.example.com/video/live.m3u8' }) });
+  beforeEach(() => {
+    jest.resetModules();
+    handler = require('../cta_token_generator').handler;
+    jest.spyOn(Date, 'now').mockReturnValue(1700000000000);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  test('warm container switches to the promoted key at the 60-second boundary', async () => {
+    mockSend.mockResolvedValueOnce({ SecretString: JSON.stringify({ signingKey: 'old-key' }) });
+    const old = JSON.parse((await handler(event('1h'))).body);
+    expect(validateToken(old.token, { key: 'old-key' }).payload[4]).toBe(1700003600);
+    Date.now.mockReturnValue(1700000059999);
+    const cached = JSON.parse((await handler(event('1h'))).body);
+    expect(validateToken(cached.token, { key: 'old-key' }).payload[4]).toBe(1700003659);
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    mockSend.mockResolvedValueOnce({ SecretString: JSON.stringify({ signingKey: 'new-key' }) });
+    Date.now.mockReturnValue(1700000060000);
+    const fresh = JSON.parse((await handler(event('1h'))).body);
+    expect(validateToken(fresh.token, { key: 'new-key' }).payload[4]).toBe(1700003660);
+    expect(() => validateToken(fresh.token, { key: 'old-key' })).toThrow('bad_signature');
+    expect(mockSend).toHaveBeenCalledTimes(2);
+    expect(mockSend.mock.calls[0][0].SecretId).toBe('test-secret');
+  });
+
+  test('fetch latency counts toward cache age', async () => {
+    mockSend.mockImplementationOnce(async () => {
+      Date.now.mockReturnValue(1700000050000);
+      return { SecretString: JSON.stringify({ signingKey: 'old-key' }) };
+    });
+    await handler(event());
+    Date.now.mockReturnValue(1700000060000);
+    mockSend.mockResolvedValueOnce({ SecretString: JSON.stringify({ signingKey: 'new-key' }) });
+    const fresh = JSON.parse((await handler(event())).body);
+    validateToken(fresh.token, { key: 'new-key' });
+    expect(mockSend).toHaveBeenCalledTimes(2);
+  });
+
+  test('failed refresh refuses to mint using an expired cached key and retries', async () => {
+    mockSend.mockResolvedValueOnce({ SecretString: JSON.stringify({ signingKey: 'old-key' }) });
+    await handler(event());
+    Date.now.mockReturnValue(1700000060000);
+    mockSend.mockRejectedValueOnce(new Error('unavailable'));
+    expect((await handler(event())).statusCode).toBe(500);
+    mockSend.mockResolvedValueOnce({ SecretString: JSON.stringify({ signingKey: 'new-key' }) });
+    const fresh = JSON.parse((await handler(event())).body);
+    validateToken(fresh.token, { key: 'new-key' });
+    expect(mockSend).toHaveBeenCalledTimes(3);
+  });
+
+  test.each([0, -1, 1.5, null, false, '', 'bad', '0s', '2h1', '121m', '3h', '1d', '25h', 7201, 86400, 86401])('rejects unsupported TTL %p before fetching a key', async ttl => {
+    const result = await handler(event(ttl));
+    expect(result.statusCode).toBe(500);
+    expect(JSON.parse(result.body).error).toContain('TTL must be');
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+  test.each([['1h', 3600], ['2h', 7200], ['120m', 7200], [7200, 7200], [undefined, 7200]])('accepts supported TTL %p', async (ttl, seconds) => {
+    mockSend.mockResolvedValueOnce({ SecretString: JSON.stringify({ signingKey: 'key' }) });
+    const result = await handler(event(ttl));
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body).expiresAt).toBe(1700000000 + seconds);
+  });
+  test.each([['3600.0', 3600], ['1e3', 1000]])('accepts JSON numeric TTL %s', async (literal, seconds) => {
+    mockSend.mockResolvedValueOnce({ SecretString: JSON.stringify({ signingKey: 'key' }) });
+    const result = await handler({ body: `{"policy":{"ttl":${literal}},"mediaUrl":"https://cdn.example.com/video/live.m3u8"}` });
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body).expiresAt).toBe(1700000000 + seconds);
+  });
+});
+
 // --- Token Revocation ---
 describe('cta_revocation', () => {
   const { handler } = require('../cta_revocation');

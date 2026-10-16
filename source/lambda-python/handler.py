@@ -9,7 +9,7 @@ Architecture
 ------------
     API Gateway (POST /token-python)
         → This Lambda
-            → Reads HMAC signing key from AWS Secrets Manager (cached after first call)
+            → Reads HMAC signing key from AWS Secrets Manager (60-second cache)
             → Delegates token generation to the CTA Python SDK (cta_client.py)
             → Returns base64url-encoded CWT token + signed URL
 
@@ -64,7 +64,7 @@ Request Format (POST body)
     {
         "policy": {
             "paths": ["/video/"],     // URI prefix restrictions
-            "ttl": "2h",              // Token lifetime (e.g. "30s", "5m", "2h", "1d")
+            "ttl": "2h",              // Omitted: 2h; positive integer seconds or s/m/h, max 7200 seconds
             "placement": "path",      // "path" (default) or "query"
             "sessionId": "abc-123"    // Session ID for revocation tracking
         },
@@ -97,9 +97,9 @@ from cta_client import generate_token, parse_ttl, CWT, CAT, CATU, MATCH
 # Secrets Manager client — initialized once per Lambda container.
 sm = boto3.client('secretsmanager')
 
-# Signing key cache — persists across invocations in the same container,
-# avoiding repeated Secrets Manager API calls.
+# Signing key cache — expires 60 seconds after the fetch starts.
 cached_key = None
+cache_expires_at = 0
 
 
 def get_signing_key():
@@ -107,14 +107,15 @@ def get_signing_key():
     Retrieve the HMAC signing key from AWS Secrets Manager.
 
     The key is a 32-byte hex string stored in a JSON secret under the
-    ``signingKey`` field. It is cached in the module-level ``cached_key``
-    variable after the first retrieval.
+    ``signingKey`` field, cached for at most 60 seconds including fetch latency.
     """
-    global cached_key
-    if cached_key:
+    global cached_key, cache_expires_at
+    fetch_started_at = time.monotonic()
+    if cached_key and fetch_started_at < cache_expires_at:
         return cached_key
     resp = sm.get_secret_value(SecretId=os.environ['SECRET_NAME'])
     cached_key = json.loads(resp['SecretString'])['signingKey']
+    cache_expires_at = fetch_started_at + 60
     return cached_key
 
 
@@ -135,9 +136,10 @@ def handler(event, context):
             raise ValueError('Missing required fields: policy, mediaUrl')
         if not media_url.startswith(('http://', 'https://')):
             raise ValueError('mediaUrl must be a valid HTTP(S) URL')
+        ttl = parse_ttl(policy.get('ttl', '2h'))
         key = get_signing_key()
         now = int(time.time())
-        exp = now + parse_ttl(policy.get('ttl', '2h'))
+        exp = now + ttl
 
         # Build CWT claims dict with integer keys per CWT/CAT specification.
         # The Python SDK's CBOR encoder handles int keys natively — no special

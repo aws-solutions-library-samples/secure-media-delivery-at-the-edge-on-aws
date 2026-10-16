@@ -8,7 +8,7 @@
 #
 #   API Gateway (POST /token-ruby)
 #       → This Lambda
-#           → Reads HMAC signing key from AWS Secrets Manager (cached after first call)
+#           → Reads HMAC signing key from AWS Secrets Manager (60-second cache)
 #           → Delegates token generation to the CTA Ruby SDK (cta_client.rb)
 #           → Returns base64url-encoded CWT token + signed URL
 #
@@ -57,7 +57,7 @@
 #   {
 #     "policy": {
 #       "paths": ["/video/"],     // URI prefix restrictions
-#       "ttl": "2h",              // Token lifetime (e.g. "30s", "5m", "2h", "1d")
+#       "ttl": "2h",              // Omitted: 2h; positive integer seconds or s/m/h, max 7200 seconds
 #       "placement": "path",      // "path" (default) or "query"
 #       "sessionId": "abc-123"    // Session ID for revocation tracking
 #     },
@@ -82,19 +82,21 @@ require_relative 'cta_client'
 # Secrets Manager client — initialized once per Lambda container.
 $sm = Aws::SecretsManager::Client.new
 
-# Signing key cache — persists across invocations in the same container,
-# avoiding repeated Secrets Manager API calls.
+# Signing key cache — expires 60 seconds after the fetch starts.
 $cached_key = nil
+$cache_expires_at = 0
 
 # Retrieve the HMAC signing key from AWS Secrets Manager.
 #
 # The key is a 32-byte hex string stored in a JSON secret under the
-# "signingKey" field. It is cached in the global $cached_key variable
-# after the first retrieval.
+# "signingKey" field, cached for at most 60 seconds including fetch latency.
 def get_signing_key
-  return $cached_key if $cached_key
+  fetch_started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  return $cached_key if $cached_key && fetch_started_at < $cache_expires_at
   resp = $sm.get_secret_value(secret_id: ENV['SECRET_NAME'])
   $cached_key = JSON.parse(resp.secret_string)['signingKey']
+  $cache_expires_at = fetch_started_at + 60
+  $cached_key
 end
 
 # Lambda handler for CTA token generation.
@@ -110,9 +112,10 @@ def handler(event:, context:)
     media_url = body['mediaUrl']
     raise 'Missing required fields: policy, mediaUrl' unless policy && media_url
     raise 'mediaUrl must be a valid HTTP(S) URL' unless media_url.start_with?('http://', 'https://')
+    ttl = CTA.parse_ttl(policy.fetch('ttl', '2h'))
     key = get_signing_key
     now = Time.now.to_i
-    exp = now + CTA.parse_ttl(policy['ttl'] || '2h')
+    exp = now + ttl
 
     # Build CWT claims hash with integer keys per CWT/CAT specification.
     # Ruby hashes natively support integer keys, so no special type needed

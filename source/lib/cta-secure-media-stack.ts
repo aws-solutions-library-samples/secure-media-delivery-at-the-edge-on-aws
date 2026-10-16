@@ -152,6 +152,15 @@ export class CTASecureMediaStack extends Stack {
     }));
 
     // --- Key sync Lambda (custom resource + rotation) ---
+    const rotationOverlap = Number(config.main.rotationOverlapSeconds ?? 7200);
+    const rotationPropagation = Number(config.main.rotationPropagationSeconds ?? 300);
+    if (!Number.isSafeInteger(rotationOverlap) || rotationOverlap < 7200 ||
+        !Number.isSafeInteger(rotationPropagation) || rotationPropagation < 300) {
+      throw new Error("Rotation requires integer overlap >=7200s and propagation >=300s");
+    }
+    if (rotationPropagation + rotationOverlap + 60 + 60 > 31449600) {
+      throw new Error("Rotation propagation + overlap + 60s mint cache + 60s in-flight allowance must not exceed 31449600s (364 days), reserving one day for workflow tasks and retries");
+    }
     const syncKeysToKvs = new lambda.Function(this, "SyncKeysToKvs", {
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: "index.handler",
@@ -160,6 +169,8 @@ export class CTASecureMediaStack extends Stack {
       environment: {
         SECRET_NAME: signingSecret.secretName,
         KVS_ARN: this.kvStore.keyValueStoreArn,
+        ROTATION_OVERLAP_SECONDS: String(rotationOverlap),
+        ROTATION_PROPAGATION_SECONDS: String(rotationPropagation),
       },
     });
 
@@ -168,7 +179,8 @@ export class CTASecureMediaStack extends Stack {
     syncKeysToKvs.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
-        "cloudfront-keyvaluestore:PutKey",
+        "cloudfront-keyvaluestore:GetKey",
+        "cloudfront-keyvaluestore:UpdateKeys",
         "cloudfront-keyvaluestore:DescribeKeyValueStore",
       ],
       resources: [this.kvStore.keyValueStoreArn],
@@ -187,24 +199,42 @@ export class CTASecureMediaStack extends Stack {
       },
     });
 
-    // --- Key rotation workflow ---
-    const rotateKeyTask = new tasks.LambdaInvoke(this, "RotateSigningKey", {
-      lambdaFunction: syncKeysToKvs,
-      payload: sfn.TaskInput.fromObject({ rotate: true }),
-      resultPath: sfn.JsonPath.DISCARD,
+    // Durable, execution-owned rotation. Only metadata enters workflow history.
+    const rotationTask = (id: string, action: string) => {
+      const task = new tasks.LambdaInvoke(this, id, {
+        lambdaFunction: syncKeysToKvs,
+        payload: sfn.TaskInput.fromObject({
+          action,
+          executionId: sfn.JsonPath.stringAt("$$.Execution.Id"),
+        }),
+        resultPath: "$.rotation",
+      });
+      task.addRetry({ errors: ["States.TaskFailed"], interval: Duration.seconds(2), maxAttempts: 6, backoffRate: 2 });
+      return task;
+    };
+    const prepareKey = rotationTask("PrepareSigningKey", "prepare");
+    const waitForEdge = new sfn.Wait(this, "WaitForEdgePropagation", {
+      time: sfn.WaitTime.timestampPath("$.rotation.Payload.propagationReadyTimestamp"),
     });
-
+    const promoteKey = rotationTask("PromoteMintKey", "promote");
+    const finalizeOverlap = rotationTask("FinalizeOverlap", "finalize");
+    const waitForOverlap = new sfn.Wait(this, "WaitForOverlap", {
+      time: sfn.WaitTime.timestampPath("$.rotation.Payload.cleanupTimestamp"),
+    });
+    const cleanupKey = rotationTask("RemovePreviousKey", "cleanup");
     const rotationWorkflow = new sfn.StateMachine(this, "KeyRotationWorkflow", {
       stateMachineName: `${Aws.STACK_NAME}_RotateKeys`,
-      definitionBody: sfn.DefinitionBody.fromChainable(rotateKeyTask),
-      timeout: Duration.minutes(5),
+      definitionBody: sfn.DefinitionBody.fromChainable(
+        prepareKey.next(waitForEdge).next(promoteKey).next(finalizeOverlap).next(waitForOverlap).next(cleanupKey)
+      ),
     });
 
-    // Rotate keys monthly by default
+    // Keep disabled until the updated validators and mints are verified.
     const rotationSchedule = config.main.rotationFrequency || "30d";
     const rotationRate = this.parseRotationRate(rotationSchedule);
     new events.Rule(this, "KeyRotationSchedule", {
       schedule: events.Schedule.rate(rotationRate),
+      enabled: config.main.rotationEnabled === true,
       targets: [new targets.SfnStateMachine(rotationWorkflow)],
     });
 

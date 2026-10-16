@@ -43,11 +43,15 @@ function generateToken(claims, key, opts = {}) {
 }
 
 function parseTTL(ttl) {
-    if (typeof ttl === 'number') return ttl;
-    const m = String(ttl).match(/^(\d+)([smhd])$/);
-    if (!m) return 7200;
-    const v = parseInt(m[1]);
-    return { s: v, m: v * 60, h: v * 3600, d: v * 86400 }[m[2]] || 7200;
+    let seconds = ttl;
+    if (typeof ttl === 'string') {
+        const match = ttl.match(/^(\d+)([smhd])$/);
+        seconds = match ? Number(match[1]) * { s: 1, m: 60, h: 3600, d: 86400 }[match[2]] : NaN;
+    }
+    if (!Number.isInteger(seconds) || seconds <= 0 || seconds > 7200) {
+        throw new Error('TTL must be a positive integer duration of at most 7200 seconds');
+    }
+    return seconds;
 }
 
 class CTAClient {
@@ -73,7 +77,7 @@ class CTAClient {
     generateCWTToken(policy, viewer = {}) {
         if (!this.signingKey) throw new Error('Call getSigningKeys() first');
         const now = Math.floor(Date.now() / 1000);
-        const exp = now + parseTTL(policy.ttl || '2h');
+        const exp = now + parseTTL(policy.ttl === undefined ? '2h' : policy.ttl);
 
         const claims = new Map();
         claims.set(CWT.ISS, 'cta-secure-media');

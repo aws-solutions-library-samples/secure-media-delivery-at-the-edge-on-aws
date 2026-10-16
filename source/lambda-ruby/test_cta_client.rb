@@ -7,9 +7,22 @@ class TestParseTTL < Minitest::Test
   def test_seconds; assert_equal 30, CTA.parse_ttl('30s'); end
   def test_minutes; assert_equal 300, CTA.parse_ttl('5m'); end
   def test_hours; assert_equal 7200, CTA.parse_ttl('2h'); end
-  def test_days; assert_equal 86400, CTA.parse_ttl('1d'); end
+  def test_maximum_minutes; assert_equal 7200, CTA.parse_ttl('120m'); end
   def test_int_passthrough; assert_equal 3600, CTA.parse_ttl(3600); end
-  def test_invalid; assert_equal 7200, CTA.parse_ttl('bad'); end
+  def test_integer_valued_json_numbers
+    require 'json'
+    [['1.0', 1], ['3600.0', 3600], ['1e3', 1000], ['7200.0', 7200]].each do |literal, expected|
+      seconds = CTA.parse_ttl(JSON.parse(literal))
+      assert_instance_of Integer, seconds
+      assert_equal expected, seconds
+    end
+  end
+  def test_invalid
+    ['bad', '', 0, -1, 1.5, 0.0, -1.0, 0.5, 7199.5, 7200.5, 7201.0, Float::NAN, Float::INFINITY, -Float::INFINITY, nil, false, true, '0s', '2h1', '121m', '3h', '1d', '25h', '2d', 7201, 86400, 86401].each do |ttl|
+      assert_raises(ArgumentError) { CTA.parse_ttl(ttl) }
+    end
+  end
+  def test_maximum; assert_equal 7200, CTA.parse_ttl(7200); end
 end
 
 class TestCborEncode < Minitest::Test

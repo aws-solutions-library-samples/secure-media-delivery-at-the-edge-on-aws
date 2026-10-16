@@ -93,11 +93,16 @@ module CTA
   end
 
   def self.parse_ttl(ttl)
-    return ttl if ttl.is_a?(Integer)
-    m = ttl.to_s.match(/^(\d+)([smhd])$/)
-    return 7200 unless m
-    v = m[1].to_i
-    { 's' => v, 'm' => v * 60, 'h' => v * 3600, 'd' => v * 86400 }[m[2]] || 7200
+    seconds = ttl
+    if ttl.is_a?(String)
+      match = ttl.match(/\A([0-9]+)([smhd])\z/)
+      seconds = match ? match[1].to_i * { 's' => 1, 'm' => 60, 'h' => 3600, 'd' => 86400 }[match[2]] : nil
+    end
+    seconds = seconds.to_i if seconds.is_a?(Float) && seconds.finite? && seconds == seconds.to_i
+    unless seconds.is_a?(Integer) && seconds.positive? && seconds <= 7200
+      raise ArgumentError, 'TTL must be a positive integer duration of at most 7200 seconds'
+    end
+    seconds
   end
 
   class Client
@@ -124,7 +129,8 @@ module CTA
     def generate_cwt_token(policy, viewer = {})
       raise 'Call get_signing_keys first' unless @signing_key
       now = Time.now.to_i
-      exp = now + CTA.parse_ttl(policy[:ttl] || policy['ttl'] || '2h')
+      ttl = policy.key?(:ttl) ? policy[:ttl] : policy.fetch('ttl', '2h')
+      exp = now + CTA.parse_ttl(ttl)
 
       claims = { CWT::ISS => 'cta-secure-media', CWT::EXP => exp, CWT::NBF => now, CWT::IAT => now }
       sid = policy[:sessionId] || policy['sessionId']

@@ -9,10 +9,12 @@ describe('parseTTL', () => {
   test('parses seconds', () => expect(parseTTL('30s')).toBe(30));
   test('parses minutes', () => expect(parseTTL('5m')).toBe(300));
   test('parses hours', () => expect(parseTTL('2h')).toBe(7200));
-  test('parses days', () => expect(parseTTL('1d')).toBe(86400));
+  test('parses maximum minutes', () => expect(parseTTL('120m')).toBe(7200));
   test('passes through numbers', () => expect(parseTTL(3600)).toBe(3600));
-  test('defaults invalid input', () => expect(parseTTL('bad')).toBe(7200));
-  test('defaults empty string', () => expect(parseTTL('')).toBe(7200));
+  test.each(['bad', '', 0, -1, 1.5, NaN, Infinity, null, false, '0s', '2h1', '121m', '3h', '1d', '25h', '2d', 7201, 86400, 86401])('rejects invalid or unsupported TTL %p', ttl => {
+    expect(() => parseTTL(ttl)).toThrow('TTL must be');
+  });
+  test('accepts the maximum numeric TTL', () => expect(parseTTL(7200)).toBe(7200));
 });
 
 describe('generateToken', () => {

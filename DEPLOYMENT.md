@@ -101,7 +101,7 @@ curl -X POST https://<api-endpoint>/prod/token-ruby ...
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `paths` | string[] | No | URI prefix restrictions (e.g. `["/video/"]`) |
-| `ttl` | string | No | Token lifetime: `"30s"`, `"5m"`, `"2h"`, `"1d"` (default: `"2h"`) |
+| `ttl` | number or string | No | Token lifetime: positive integer seconds or integer `s`/`m`/`h` durations (e.g. `30`, `"30s"`, `"5m"`, `"2h"`), maximum 7200 seconds (2 hours); default: `"2h"` |
 | `placement` | string | No | `"path"` (default) or `"query"` |
 | `sessionId` | string | No | Session ID for revocation tracking |
 | `ips` | string | No | Allowed viewer IP address |

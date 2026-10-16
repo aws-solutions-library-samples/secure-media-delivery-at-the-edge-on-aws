@@ -91,6 +91,24 @@ function validateClaims(payload, request, viewerIp) {
     }
 }
 
+// Only signature validation falls back. Revocation and policy checks still
+// run once on the authenticated payload, irrespective of the signing key.
+async function validateWithRotation(token, signingKey, kvs) {
+    var bytes = Buffer.from(token, 'base64url');
+    try {
+        return cf.cwt.validateToken(bytes, { key: signingKey });
+    } catch (currentError) {
+        var previous;
+        try { previous = JSON.parse(await kvs.get("key:previous")); }
+        catch (e) { throw currentError; }
+        if (!previous || typeof previous.signingKey !== 'string' ||
+            (previous.expiresAt !== null &&
+             (typeof previous.expiresAt !== 'number' || !isFinite(previous.expiresAt) ||
+              Math.floor(Date.now() / 1000) >= previous.expiresAt))) throw currentError;
+        return cf.cwt.validateToken(bytes, { key: previous.signingKey });
+    }
+}
+
 async function handler(event) {
     try {
         var request = event.request;
@@ -119,13 +137,13 @@ async function handler(event) {
         // Try header token first
         if (request.headers["cta-common-access-token"]) {
             token = request.headers["cta-common-access-token"].value;
-            var cwt = cf.cwt.validateToken(Buffer.from(token, 'base64url'), { key: signingKey });
+            var cwt = await validateWithRotation(token, signingKey, kvs);
             payload = cwt.payload;
         }
         // Try query parameter token (?CAT=...)
         else if (request.querystring["CAT"]) {
             token = request.querystring["CAT"].value;
-            var cwt = cf.cwt.validateToken(Buffer.from(token, 'base64url'), { key: signingKey });
+            var cwt = await validateWithRotation(token, signingKey, kvs);
             payload = cwt.payload;
             delete request.querystring["CAT"];
         }
@@ -136,7 +154,7 @@ async function handler(event) {
                 return { statusCode: 401, headers: { 'cache-control': { value: 'no-store' } }, body: "missing_token" };
             }
             
-            var cwt = cf.cwt.validateToken(Buffer.from(token, 'base64url'), { key: signingKey });
+            var cwt = await validateWithRotation(token, signingKey, kvs);
             payload = cwt.payload;
         }
         
